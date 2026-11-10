@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "A8FPYp/Mx94=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\USER\\Documents\\antigravity\\screenX\\screenX.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\USER\\.nuget\\packages\\sharpgen.runtime\\2.4.2-beta\\sharpgen.runtime.2.4.2-beta.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\sharpgen.runtime.com\\2.4.2-beta\\sharpgen.runtime.com.2.4.2-beta.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\vortice.direct2d1\\3.8.3\\vortice.direct2d1.3.8.3.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\vortice.directx\\3.8.3\\vortice.directx.3.8.3.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\vortice.dxgi\\3.8.3\\vortice.dxgi.3.8.3.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\vortice.mathematics\\2.1.0\\vortice.mathematics.2.1.0.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\microsoft.windows.sdk.net.ref\\10.0.19041.57\\microsoft.windows.sdk.net.ref.10.0.19041.57.nupkg.sha512"
+  ],
+  "logs": []
+}
