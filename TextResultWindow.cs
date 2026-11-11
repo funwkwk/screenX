@@ -9,7 +9,7 @@ public sealed class TextResultWindow : Window
 {
     public TextResultWindow(string text)
     {
-        Title = "screenX — Teks hasil ekstraksi";
+        Title = "screenX — Extracted text";
         Width = 560; Height = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20));
@@ -24,10 +24,10 @@ public sealed class TextResultWindow : Window
             BorderThickness = new Thickness(0), CaretBrush = Brushes.White
         };
 
-        var copy = new Button { Content = "Salin semua", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0), Foreground = Brushes.White, Template = Toast.PillButtonTemplate(), Cursor = System.Windows.Input.Cursors.Hand };
-        var close = new Button { Content = "Tutup", Padding = new Thickness(14, 6, 14, 6), Foreground = Brushes.White, Template = Toast.PillButtonTemplate(), Cursor = System.Windows.Input.Cursors.Hand };
+        var copy = new Button { Content = "Copy all", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0), Foreground = Brushes.White, Template = Toast.PillButtonTemplate(), Cursor = System.Windows.Input.Cursors.Hand };
+        var close = new Button { Content = "Close", Padding = new Thickness(14, 6, 14, 6), Foreground = Brushes.White, Template = Toast.PillButtonTemplate(), Cursor = System.Windows.Input.Cursors.Hand };
         var status = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xB0, 0xB0, 0xB0)), VerticalAlignment = VerticalAlignment.Center };
-        copy.Click += (_, _) => { ClipboardUtil.SetText(box.Text); status.Text = "Disalin ✓"; };
+        copy.Click += (_, _) => { ClipboardUtil.SetText(box.Text); status.Text = "Copied ✓"; };
         close.Click += (_, _) => Close();
 
         var buttons = new DockPanel { Margin = new Thickness(12) };

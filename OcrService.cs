@@ -25,7 +25,7 @@ public static class OcrService
     public static async Task<string> RecognizeAsync(BitmapSource src)
     {
         var engine = CreateEngine() ?? throw new InvalidOperationException(
-            "Tidak ada bahasa OCR yang terpasang. Tambahkan bahasa (mis. English) di Settings > Time & language > Language.");
+            "No OCR language is installed. Add a language (e.g. English) in Settings > Time & language > Language.");
 
         // Small snips recognise much better when upscaled.
         double scale = 1;

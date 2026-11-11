@@ -114,7 +114,7 @@ public partial class EditorWindow : Window
     void Copy_Click(object sender, RoutedEventArgs e)
     {
         ClipboardUtil.SetImage(Flatten());
-        Status.Text = "Disalin ke clipboard.";
+        Status.Text = "Copied to clipboard.";
     }
 
     void Save_Click(object sender, RoutedEventArgs e)
@@ -131,7 +131,7 @@ public partial class EditorWindow : Window
         {
             ImageUtil.Save(Flatten(), dlg.FileName);
             savedPath = dlg.FileName;
-            Status.Text = $"Disimpan: {dlg.FileName}";
+            Status.Text = $"Saved: {dlg.FileName}";
         }
         catch (Exception ex)
         {
@@ -152,13 +152,13 @@ public partial class EditorWindow : Window
     async void Ocr_Click(object sender, RoutedEventArgs e)
     {
         BtnOcr.IsEnabled = false;
-        Status.Text = "Mengekstrak teks…";
+        Status.Text = "Extracting text…";
         try
         {
             string text = await OcrService.RecognizeAsync(original);
-            if (string.IsNullOrWhiteSpace(text)) { Status.Text = "Tidak ada teks yang terdeteksi."; return; }
+            if (string.IsNullOrWhiteSpace(text)) { Status.Text = "No text detected."; return; }
             ClipboardUtil.SetText(text);
-            Status.Text = "Teks disalin ke clipboard.";
+            Status.Text = "Text copied to clipboard.";
             new TextResultWindow(text) { Owner = this }.Show();
         }
         catch (Exception ex) { Status.Text = ex.Message; }

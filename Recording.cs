@@ -61,7 +61,7 @@ public sealed class RecordingSession
                  })
             psi.ArgumentList.Add(a);
 
-        ff = Process.Start(psi) ?? throw new InvalidOperationException("Gagal menjalankan ffmpeg.");
+        ff = Process.Start(psi) ?? throw new InvalidOperationException("Could not start ffmpeg.");
         ff.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (log) log.AppendLine(e.Data); };
         ff.OutputDataReceived += (_, _) => { };
         ff.BeginErrorReadLine();
@@ -124,7 +124,7 @@ public sealed class RecordingSession
         if (ff.ExitCode != 0 || !File.Exists(OutputPath))
         {
             string msg; lock (log) msg = log.ToString();
-            throw new InvalidOperationException("ffmpeg gagal menyimpan video.\n" + (error?.Message ?? "") + "\n" + msg);
+            throw new InvalidOperationException("ffmpeg could not save the video.\n" + (error?.Message ?? "") + "\n" + msg);
         }
     }
 
@@ -188,7 +188,7 @@ public sealed class RecordingBar : Window
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; Topmost = true; ResizeMode = ResizeMode.NoResize; SizeToContent = SizeToContent.WidthAndHeight;
         FontFamily = new FontFamily("Segoe UI");
-        Title = "screenX — Rekam";
+        Title = "screenX — Record";
 
         var card = new Border
         {
@@ -205,12 +205,17 @@ public sealed class RecordingBar : Window
         Loaded += (_, _) => Place();
     }
 
-    static Button IconButton(string glyph, string tip, Brush? fg = null) => new()
+    static Button IconButton(string glyph, string tip, Brush? fg = null)
     {
-        Content = glyph, ToolTip = tip, Width = 40, Height = 36, FontSize = 15,
-        FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), Foreground = fg ?? Brushes.White,
-        Cursor = Cursors.Hand, Template = Toast.FlatButtonTemplate(), Margin = new Thickness(1)
-    };
+        var b = new Button
+        {
+            Content = glyph, ToolTip = tip, Width = 40, Height = 36, FontSize = 15,
+            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), Foreground = fg ?? Brushes.White,
+            Cursor = Cursors.Hand, Template = Toast.FlatButtonTemplate(), Margin = new Thickness(1)
+        };
+        System.Windows.Automation.AutomationProperties.SetName(b, tip);
+        return b;
+    }
 
     void ShowIdle()
     {
@@ -223,13 +228,14 @@ public sealed class RecordingBar : Window
                 Children =
                 {
                     new Ellipse { Width = 10, Height = 10, Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x4D, 0x4F)), VerticalAlignment = VerticalAlignment.Center },
-                    new TextBlock { Text = "Mulai", Foreground = Brushes.White, FontSize = 13.5, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }
+                    new TextBlock { Text = "Start", Foreground = Brushes.White, FontSize = 13.5, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }
                 }
             },
             Padding = new Thickness(14, 8, 14, 8), Cursor = Cursors.Hand, Template = Toast.PillButtonTemplate(), Margin = new Thickness(2)
         };
+        System.Windows.Automation.AutomationProperties.SetName(start, "Start");
         start.Click += (_, _) => StartClicked?.Invoke();
-        var cancel = IconButton("", "Batal");
+        var cancel = IconButton("", "Cancel");
         cancel.Click += (_, _) => CancelClicked?.Invoke();
         row.Children.Add(start);
         row.Children.Add(new TextBlock { Text = $"{region.Width} × {region.Height}", Foreground = new SolidColorBrush(Color.FromRgb(0xB0, 0xB0, 0xB0)), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 6, 0) });
@@ -239,7 +245,7 @@ public sealed class RecordingBar : Window
     public void ShowCountdown(int n)
     {
         row.Children.Clear();
-        row.Children.Add(new TextBlock { Text = $"Mulai dalam {n}…", Foreground = Brushes.White, FontSize = 14, Margin = new Thickness(14, 8, 14, 8) });
+        row.Children.Add(new TextBlock { Text = $"Starting in {n}…", Foreground = Brushes.White, FontSize = 14, Margin = new Thickness(14, 8, 14, 8) });
     }
 
     public void ShowRecording()
@@ -247,11 +253,11 @@ public sealed class RecordingBar : Window
         row.Children.Clear();
         row.Children.Add(dot);
         row.Children.Add(timeText);
-        pauseBtn = IconButton("", "Jeda");
+        pauseBtn = IconButton("", "Pause");
         pauseBtn.Click += (_, _) => PauseClicked?.Invoke();
-        var stop = IconButton("", "Berhenti & simpan", new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B)));
+        var stop = IconButton("", "Stop & save", new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B)));
         stop.Click += (_, _) => StopClicked?.Invoke();
-        var discard = IconButton("", "Buang rekaman");
+        var discard = IconButton("", "Discard recording");
         discard.Click += (_, _) => DiscardClicked?.Invoke();
         row.Children.Add(pauseBtn);
         row.Children.Add(stop);
@@ -262,7 +268,7 @@ public sealed class RecordingBar : Window
     public void ShowSaving()
     {
         row.Children.Clear();
-        row.Children.Add(new TextBlock { Text = "Menyimpan video…", Foreground = Brushes.White, FontSize = 13.5, Margin = new Thickness(14, 8, 14, 8) });
+        row.Children.Add(new TextBlock { Text = "Saving video…", Foreground = Brushes.White, FontSize = 13.5, Margin = new Thickness(14, 8, 14, 8) });
     }
 
     public void UpdateTime(TimeSpan t, bool paused)
@@ -272,7 +278,7 @@ public sealed class RecordingBar : Window
         if (pauseBtn != null)
         {
             pauseBtn.Content = paused ? "" : "";
-            pauseBtn.ToolTip = paused ? "Lanjutkan" : "Jeda";
+            pauseBtn.ToolTip = paused ? "Resume" : "Pause";
         }
     }
 
@@ -339,7 +345,7 @@ public sealed class RecordingController
         string? ffmpeg = FfmpegLocator.Find();
         if (ffmpeg == null)
         {
-            MessageBox.Show("Perekaman layar membutuhkan ffmpeg.\n\nInstal dengan perintah:\n    winget install Gyan.FFmpeg\n\natau letakkan ffmpeg.exe di folder yang sama dengan screenX.exe.",
+            MessageBox.Show("Screen recording needs ffmpeg.\n\nInstall it with:\n    winget install Gyan.FFmpeg\n\nor put ffmpeg.exe in the same folder as screenX.exe.",
                 "screenX", MessageBoxButton.OK, MessageBoxImage.Information);
             End();
             return;
@@ -352,7 +358,7 @@ public sealed class RecordingController
         }
         try
         {
-            var path = ImageUtil.UniquePath(Settings.Current.VideoFolder, "Rekaman layar", ".mp4");
+            var path = ImageUtil.UniquePath(Settings.Current.VideoFolder, "Screen Recording", ".mp4");
             session = new RecordingSession(ffmpeg, region, path, Settings.Current.RecordFps, Settings.Current.RecordCursor);
             session.Start();
             frame.SetRecording(true);
@@ -361,7 +367,7 @@ public sealed class RecordingController
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Gagal memulai rekaman:\n" + ex.Message, "screenX", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("Could not start recording:\n" + ex.Message, "screenX", MessageBoxButton.OK, MessageBoxImage.Error);
             End();
         }
     }
@@ -391,10 +397,10 @@ public sealed class RecordingController
             }
             End();
             ClipboardUtil.SetFile(s.OutputPath);
-            Toast.Notify("Rekaman layar disimpan", Path.GetFileName(s.OutputPath) + "\nFile video sudah disalin ke clipboard.",
+            Toast.Notify("Screen recording saved", Path.GetFileName(s.OutputPath) + "\nThe video file is copied to your clipboard.",
                 null, () => WinUtil.OpenPath(s.OutputPath),
-                ("Putar", (Action)(() => WinUtil.OpenPath(s.OutputPath))),
-                ("Buka folder", (Action)(() => WinUtil.RevealFile(s.OutputPath))));
+                ("Play", (Action)(() => WinUtil.OpenPath(s.OutputPath))),
+                ("Open folder", (Action)(() => WinUtil.RevealFile(s.OutputPath))));
         }
         catch (Exception ex)
         {

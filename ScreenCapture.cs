@@ -72,7 +72,7 @@ public sealed class GdiCapturer : IDisposable
             biWidth = width, biHeight = -height, biPlanes = 1, biBitCount = 32, biCompression = 0
         };
         hBmp = Native.CreateDIBSection(screenDc, ref bi, 0, out IntPtr bits, IntPtr.Zero, 0);
-        if (hBmp == IntPtr.Zero) throw new InvalidOperationException("CreateDIBSection gagal.");
+        if (hBmp == IntPtr.Zero) throw new InvalidOperationException("CreateDIBSection failed.");
         Bits = bits;
         oldBmp = Native.SelectObject(memDc, hBmp);
     }
