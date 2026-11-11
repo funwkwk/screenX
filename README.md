@@ -1,5 +1,7 @@
 # screenX
 
+by [funwkwk](https://funwkwk.my.id)
+
 screenX is an open-source screen capture tool. It works like the Windows Snipping Tool and adds screen recording,
 a colour picker, a text extractor (OCR), in-place markup and Google Lens image search.
 
@@ -107,4 +109,4 @@ Self-test (capture, OCR, colours, UI renders and a 2-second recording; writes im
 
 ## License
 
-screenX is released under the [MIT License](LICENSE). Copyright (c) 2026 Irfan.
+screenX is released under the [MIT License](LICENSE). Copyright (c) 2026 [funwkwk](https://funwkwk.my.id).

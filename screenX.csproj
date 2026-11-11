@@ -15,8 +15,10 @@
     <RootNamespace>ScreenX</RootNamespace>
     <Product>screenX</Product>
     <Version>1.0.0</Version>
-    <Authors>Irfan</Authors>
-    <Copyright>Copyright (c) 2026 Irfan</Copyright>
+    <Authors>funwkwk</Authors>
+    <Company>funwkwk</Company>
+    <Copyright>Copyright (c) 2026 funwkwk (https://funwkwk.my.id)</Copyright>
+    <PackageProjectUrl>https://funwkwk.my.id</PackageProjectUrl>
     <Description>screenX - open-source screen capture, recording, colour picker, OCR and markup tool.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/funwkwk/screenX</RepositoryUrl>
