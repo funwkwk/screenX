@@ -65,6 +65,17 @@ public static class SelfTest
                     await Task.Delay(300);
                     SaveVisual((FrameworkElement)ov.Content, Path.Combine(outDir, $"markup-{f}.png"));
                 }
+                ov.TestOpen("shapes");
+                await Task.Delay(200);
+                L("button heights: " + ov.TestButtonHeights());
+                ov.TestOpen("none");
+                ImageUtil.Save(ov.TestFlatten(), Path.Combine(outDir, "markup-flatten-before-resize.png"));
+                var resized = ov.TestResize(120, 80);
+                await Task.Delay(300);
+                SaveVisual((FrameworkElement)ov.Content, Path.Combine(outDir, "markup-resized.png"));
+                var flatResized = ov.TestFlatten();
+                L($"resize: sel={resized.Width}x{resized.Height} capture={flatResized.PixelWidth}x{flatResized.PixelHeight}");
+                ImageUtil.Save(flatResized, Path.Combine(outDir, "markup-flatten-resized.png"));
                 ImageUtil.Save(ov.TestFlatten(), Path.Combine(outDir, "markup-flatten.png"));
                 ov.Close();
                 L("overlay render: OK");
@@ -102,12 +113,6 @@ public static class SelfTest
                     await rs.StopAsync();
                     L($"recording: OK {new FileInfo(path).Length} bytes, elapsed {rs.Elapsed.TotalSeconds:F2}s");
                 }
-                try
-                {
-                    var lens = await GoogleLens.UploadAsync(textImg);
-                    L("google lens: " + (lens ?? "(no url)"));
-                }
-                catch (Exception ex) { L("google lens error: " + ex.Message); }
                 L("DONE");
             }
             catch (Exception ex) { L("FAIL: " + ex); }

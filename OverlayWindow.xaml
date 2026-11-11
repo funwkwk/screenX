@@ -22,6 +22,7 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="Cursor" Value="Arrow"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="AutomationProperties.Name" Value="{Binding ToolTip, RelativeSource={RelativeSource Self}}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ButtonBase">
@@ -79,8 +80,8 @@
 
         <!-- markup tool: checked = accent outline box (like the reference pen) -->
         <Style x:Key="Tool" TargetType="ToggleButton" BasedOn="{StaticResource Flat}">
-            <Setter Property="Width" Value="46"/>
-            <Setter Property="Height" Value="44"/>
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
@@ -90,7 +91,7 @@
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             <TextBlock x:Name="Chev" Text="&#xE70D;" FontFamily="{StaticResource Icons}" FontSize="8"
                                        Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                       Margin="0,0,0,4" Visibility="Collapsed"/>
+                                       Margin="0,0,0,1" Visibility="Collapsed"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -109,8 +110,8 @@
 
         <!-- shape picker: accent outline box when checked, no chevron -->
         <Style x:Key="Pick" TargetType="ToggleButton" BasedOn="{StaticResource Flat}">
-            <Setter Property="Width" Value="48"/>
-            <Setter Property="Height" Value="44"/>
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
@@ -140,7 +141,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
                         <Grid>
-                            <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Margin="3"/>
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Margin="2"/>
                             <ContentPresenter x:Name="Cp" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -277,7 +278,24 @@
             <!-- in-place markup ink -->
             <InkCanvas x:Name="Ink" Background="Transparent" Visibility="Collapsed" Cursor="Pen"/>
 
+            <!-- selection box for a placed emoji: move by dragging the emoji, resize from the corners, rotate from the top button -->
+            <Canvas x:Name="EmojiAdorner" Visibility="Collapsed">
+                <Rectangle x:Name="AdornerBox" Stroke="#B4B4B4" StrokeThickness="1.5" IsHitTestVisible="False"/>
+                <Ellipse x:Name="HandleTL" Width="14" Height="14" Fill="White" Stroke="#59000000" StrokeThickness="1" Cursor="SizeNWSE"/>
+                <Ellipse x:Name="HandleTR" Width="14" Height="14" Fill="White" Stroke="#59000000" StrokeThickness="1" Cursor="SizeNESW"/>
+                <Ellipse x:Name="HandleBL" Width="14" Height="14" Fill="White" Stroke="#59000000" StrokeThickness="1" Cursor="SizeNESW"/>
+                <Ellipse x:Name="HandleBR" Width="14" Height="14" Fill="White" Stroke="#59000000" StrokeThickness="1" Cursor="SizeNWSE"/>
+                <Border x:Name="RotateHandle" Width="36" Height="36" CornerRadius="18" Background="#F2303030"
+                        BorderBrush="#33FFFFFF" BorderThickness="1" Cursor="Hand" ToolTip="Rotate">
+                    <TextBlock Text="&#xE7AD;" FontFamily="{StaticResource Icons}" FontSize="16" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Canvas>
+
             <Path x:Name="SelOutline" Stroke="White" StrokeThickness="1.5" IsHitTestVisible="False"/>
+
+            <!-- resize handles of the rectangle selection (corners + edge midpoints), built in code -->
+            <Canvas x:Name="SelHandles" Visibility="Collapsed"/>
 
             <Border x:Name="SizeLabel" Background="#E6202020" CornerRadius="4" Padding="6,2"
                     Visibility="Collapsed" IsHitTestVisible="False">
@@ -311,9 +329,9 @@
                 </Border.Effect>
                 <StackPanel Orientation="Horizontal">
                     <!-- split Capture button -->
-                    <Border CornerRadius="5" Background="{StaticResource Accent}" Margin="2,2,6,2" Height="40">
+                    <Border CornerRadius="5" Background="{StaticResource Accent}" Margin="2,2,6,2" Height="36">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="BtnCapture" Click="Capture_Click" ToolTip="Capture (Ctrl+Enter)" Cursor="Arrow" FocusVisualStyle="{x:Null}">
+                            <Button x:Name="BtnCapture" Click="Capture_Click" ToolTip="Capture (Ctrl+Enter)" AutomationProperties.Name="Capture" Cursor="Arrow" FocusVisualStyle="{x:Null}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="B" Background="Transparent" CornerRadius="5,0,0,5" Padding="16,0,14,0">
@@ -327,7 +345,7 @@
                                     </ControlTemplate>
                                 </Button.Template>
                             </Button>
-                            <Button x:Name="BtnCaptureMenu" Click="CaptureMenu_Click" ToolTip="Opsi capture" Cursor="Arrow" FocusVisualStyle="{x:Null}">
+                            <Button x:Name="BtnCaptureMenu" Click="CaptureMenu_Click" ToolTip="Capture options" AutomationProperties.Name="Capture options" Cursor="Arrow" FocusVisualStyle="{x:Null}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="B" Background="Transparent" CornerRadius="0,5,5,0" Padding="12,0">
@@ -345,35 +363,37 @@
                         </StackPanel>
                     </Border>
 
-                    <Button Style="{StaticResource Flat}" Content="&#xE72D;" ToolTip="Bagikan" Click="Share_Click"/>
-                    <Button Style="{StaticResource Flat}" ToolTip="Cari gambar dengan Google Lens" Click="Search_Click">
+                    <Button Style="{StaticResource Flat}" Content="&#xE72D;" ToolTip="Share" Click="Share_Click"/>
+                    <Button Style="{StaticResource Flat}" ToolTip="Search image with Google Lens" Click="Search_Click">
                         <Path Data="{StaticResource IcoScanTarget}" Stroke="White" StrokeThickness="1.4" Width="20" Height="20"
                               StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                     </Button>
                     <Rectangle Style="{StaticResource Sep}"/>
 
-                    <ToggleButton x:Name="ToolPen" Style="{StaticResource Tool}" ToolTip="Pulpen" Click="Tool_Click">
-                        <Canvas Width="20" Height="20" Margin="0,0,0,6">
+                    <ToggleButton x:Name="ToolPen" Style="{StaticResource Tool}" ToolTip="Pen" Click="Tool_Click">
+                        <Canvas Width="20" Height="20">
                             <Path Data="M6,2.5 H14 L13,10 H7 Z" Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"/>
                             <Path x:Name="PenTip" Data="M7,10 H13 L10,17 Z" Fill="#E81123" Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"/>
                         </Canvas>
                     </ToggleButton>
                     <ToggleButton x:Name="ToolHighlighter" Style="{StaticResource Tool}" ToolTip="Highlighter" Click="Tool_Click">
-                        <Canvas Width="20" Height="20" Margin="0,0,0,6">
+                        <Canvas Width="20" Height="20">
                             <Path x:Name="HlCap" Data="M5.5,2.5 H14.5 V7.5 H5.5 Z" Fill="#FCE100" Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"/>
                             <Path Data="M5.5,7.5 H14.5 L12.5,12 V16 L7.5,17.5 V12 Z" Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"/>
                         </Canvas>
                     </ToggleButton>
-                    <ToggleButton x:Name="ToolEraser" Style="{StaticResource Tool}" ToolTip="Penghapus" Click="Tool_Click"
-                                  Content="&#xE75C;" Padding="0,0,0,6"/>
-                    <ToggleButton x:Name="ToolShapes" Style="{StaticResource Tool}" ToolTip="Bentuk" Click="Tool_Click">
-                        <Path Data="{StaticResource IcoShapes}" Stroke="White" StrokeThickness="1.4" Width="20" Height="20" Margin="0,0,0,6"/>
+                    <ToggleButton x:Name="ToolEraser" Style="{StaticResource Tool}" ToolTip="Eraser" Click="Tool_Click"
+                                  >
+                        <TextBlock Text="&#xE75C;"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="ToolShapes" Style="{StaticResource Tool}" ToolTip="Shapes" Click="Tool_Click">
+                        <Path Data="{StaticResource IcoShapes}" Stroke="White" StrokeThickness="1.4" Width="20" Height="20"/>
                     </ToggleButton>
                     <Rectangle Style="{StaticResource Sep}"/>
-                    <Button x:Name="BtnUndo" Style="{StaticResource Flat}" Content="&#xE7A7;" ToolTip="Urungkan (Ctrl+Z)" Click="Undo_Click"/>
-                    <Button x:Name="BtnRedo" Style="{StaticResource Flat}" Content="&#xE7A6;" ToolTip="Ulangi (Ctrl+Y)" Click="Redo_Click"/>
+                    <Button x:Name="BtnUndo" Style="{StaticResource Flat}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Click="Undo_Click"/>
+                    <Button x:Name="BtnRedo" Style="{StaticResource Flat}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" Click="Redo_Click"/>
                     <Rectangle Style="{StaticResource Sep}"/>
-                    <Button Style="{StaticResource Flat}" Content="&#xE74D;" ToolTip="Buang snip (batal)" Click="Discard_Click"/>
+                    <Button Style="{StaticResource Flat}" Content="&#xE74D;" ToolTip="Discard snip" Click="Discard_Click"/>
                 </StackPanel>
             </Border>
 
@@ -419,7 +439,7 @@
 
             <!-- Eraser flyout -->
             <Border x:Name="EraserFlyout" Style="{StaticResource Flyout}" Cursor="Arrow" MouseLeftButtonDown="Bar_MouseDown">
-                <Button Style="{StaticResource MenuRow}" Click="EraseAll_Click">
+                <Button Style="{StaticResource MenuRow}" Click="EraseAll_Click" AutomationProperties.Name="Erase all mark-ups">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE74D;" FontFamily="{StaticResource Icons}" FontSize="16" VerticalAlignment="Center"/>
                         <TextBlock Text="Erase all mark-ups" FontSize="14" Margin="14,0,4,0" VerticalAlignment="Center"/>
@@ -431,7 +451,7 @@
             <Border x:Name="ShapesFlyout" Style="{StaticResource Flyout}" Padding="6" Cursor="Arrow" MouseLeftButtonDown="Bar_MouseDown">
                 <StackPanel Orientation="Horizontal">
                     <ToggleButton x:Name="BtnEmoji" Style="{StaticResource Seg}" ToolTip="Emoji" Click="Emoji_Click"
-                                  Content="&#xE76E;" FontSize="20" Width="48" Height="44"/>
+                                  Content="&#xE76E;" FontSize="20"/>
                     <Rectangle Style="{StaticResource Sep}"/>
                     <ToggleButton x:Name="ShapeRect" Style="{StaticResource Pick}" ToolTip="Rectangle" Click="ShapeKind_Click">
                         <Path Data="M3.5,4.5 H16.5 V15.5 H3.5 Z" Stroke="White" StrokeThickness="1.6" Width="20" Height="20"/>
@@ -478,7 +498,7 @@
             <Border x:Name="PaletteFlyout" Style="{StaticResource Flyout}" Padding="16,12,16,16" Cursor="Arrow" MouseLeftButtonDown="Bar_MouseDown">
                 <StackPanel Width="276">
                     <TextBlock x:Name="PaletteTitle" Text="Fill" Foreground="White" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                    <Button x:Name="BtnNoFill" Style="{StaticResource MenuRow}" Click="NoFill_Click" Margin="-8,0,-8,6">
+                    <Button x:Name="BtnNoFill" Style="{StaticResource MenuRow}" Click="NoFill_Click" AutomationProperties.Name="No fill" Margin="-8,0,-8,6">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE733;" FontFamily="{StaticResource Icons}" FontSize="16" VerticalAlignment="Center"/>
                             <TextBlock Text="No fill" FontSize="14" Margin="12,0,0,0" VerticalAlignment="Center"/>
@@ -502,22 +522,22 @@
                 </Border.Effect>
                 <StackPanel Orientation="Horizontal">
                     <!-- photo / video segment -->
-                    <Border Background="#0DFFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="6" Margin="0,0,10,0">
+                    <Border Background="#0DFFFFFF" CornerRadius="6" Margin="0,0,10,0">
                         <StackPanel Orientation="Horizontal">
-                            <ToggleButton x:Name="BtnPhoto" Style="{StaticResource Seg}" Content="&#xE722;" ToolTip="Snip (foto)" Click="Photo_Click"/>
-                            <ToggleButton x:Name="BtnVideo" Style="{StaticResource Seg}" Content="&#xE714;" ToolTip="Rekam layar (video)" Click="Video_Click"/>
+                            <ToggleButton x:Name="BtnPhoto" Style="{StaticResource Seg}" Content="&#xE722;" ToolTip="Snip" Click="Photo_Click"/>
+                            <ToggleButton x:Name="BtnVideo" Style="{StaticResource Seg}" Content="&#xE714;" ToolTip="Record" Click="Video_Click"/>
                         </StackPanel>
                     </Border>
 
                     <!-- snip shape dropdown -->
-                    <Button x:Name="BtnShape" Style="{StaticResource Flat}" Width="62" ToolTip="Mode snip" Click="ShapeMenu_Click">
+                    <Button x:Name="BtnShape" Style="{StaticResource Flat}" Width="62" ToolTip="Snipping mode" Click="ShapeMenu_Click">
                         <StackPanel Orientation="Horizontal">
                             <ContentControl x:Name="ShapeIcon" Width="20" Height="20"/>
                             <TextBlock Text="&#xE70D;" FontFamily="{StaticResource Icons}" FontSize="10" Margin="6,2,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
 
-                    <ToggleButton x:Name="BtnMarkup" Style="{StaticResource AccentToggle}" ToolTip="Markup langsung setelah snip" Click="Markup_Click">
+                    <ToggleButton x:Name="BtnMarkup" Style="{StaticResource AccentToggle}" ToolTip="Quick markup after snip" Click="Markup_Click">
                         <Path Data="{StaticResource IcoMarkup}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
                               StrokeThickness="1.4" Width="21" Height="20" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                     </ToggleButton>
@@ -534,7 +554,7 @@
                     </ToggleButton>
 
                     <Rectangle Style="{StaticResource Sep}"/>
-                    <Button Style="{StaticResource Flat}" Content="&#xE711;" FontSize="16" ToolTip="Tutup (Esc)" Click="Close_Click"/>
+                    <Button Style="{StaticResource Flat}" Content="&#xE711;" FontSize="16" ToolTip="Close (Esc)" Click="Close_Click"/>
                 </StackPanel>
             </Border>
 

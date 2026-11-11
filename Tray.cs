@@ -38,20 +38,20 @@ public sealed class Tray : IDisposable
         var m = new ContextMenuStrip { ShowImageMargin = false, ShowCheckMargin = true };
         var s = Settings.Current;
 
-        m.Items.Add(new ToolStripMenuItem("Snip baru", null, (_, _) => app.StartCapture(s.LastSnipMode)) { ShortcutKeyDisplayString = "Ctrl+Shift+S", Font = new Font(m.Font, FontStyle.Bold) });
-        m.Items.Add(new ToolStripMenuItem("Snip layar penuh", null, (_, _) => app.StartCapture(CaptureMode.Fullscreen)));
-        m.Items.Add(new ToolStripMenuItem("Rekam layar", null, (_, _) => app.StartCapture(CaptureMode.Record)));
+        m.Items.Add(new ToolStripMenuItem("New snip", null, (_, _) => app.StartCapture(s.LastSnipMode)) { ShortcutKeyDisplayString = "Ctrl+Shift+S", Font = new Font(m.Font, FontStyle.Bold) });
+        m.Items.Add(new ToolStripMenuItem("Full screen snip", null, (_, _) => app.StartCapture(CaptureMode.Fullscreen)));
+        m.Items.Add(new ToolStripMenuItem("Screen record", null, (_, _) => app.StartCapture(CaptureMode.Record)));
         m.Items.Add(new ToolStripMenuItem("Color picker", null, (_, _) => app.StartCapture(CaptureMode.ColorPicker)));
         m.Items.Add(new ToolStripMenuItem("Text extractor", null, (_, _) => app.StartCapture(CaptureMode.Text)));
         m.Items.Add(new ToolStripSeparator());
-        m.Items.Add(new ToolStripMenuItem("Buka folder screenshot", null, (_, _) => OpenFolder(s.ScreenshotFolder)));
-        m.Items.Add(new ToolStripMenuItem("Buka folder rekaman", null, (_, _) => OpenFolder(s.VideoFolder)));
+        m.Items.Add(new ToolStripMenuItem("Open screenshots folder", null, (_, _) => OpenFolder(s.ScreenshotFolder)));
+        m.Items.Add(new ToolStripMenuItem("Open recordings folder", null, (_, _) => OpenFolder(s.VideoFolder)));
         m.Items.Add(new ToolStripSeparator());
 
-        var settings = new ToolStripMenuItem("Pengaturan");
-        settings.DropDownItems.Add(Toggle("Simpan screenshot otomatis", () => s.AutoSave, v => s.AutoSave = v));
-        settings.DropDownItems.Add(Toggle("Tampilkan kursor di rekaman", () => s.RecordCursor, v => s.RecordCursor = v));
-        var fps = new ToolStripMenuItem("Frame rate rekaman");
+        var settings = new ToolStripMenuItem("Settings");
+        settings.DropDownItems.Add(Toggle("Auto-save screenshots", () => s.AutoSave, v => s.AutoSave = v));
+        settings.DropDownItems.Add(Toggle("Show cursor in recordings", () => s.RecordCursor, v => s.RecordCursor = v));
+        var fps = new ToolStripMenuItem("Recording frame rate");
         foreach (var f in new[] { 15, 24, 30, 60 })
         {
             var item = new ToolStripMenuItem($"{f} fps") { Checked = s.RecordFps == f };
@@ -63,11 +63,11 @@ public sealed class Tray : IDisposable
             fps.DropDownItems.Add(item);
         }
         settings.DropDownItems.Add(fps);
-        settings.DropDownItems.Add(Toggle("Jalankan saat Windows mulai", IsAutoStart, SetAutoStart));
+        settings.DropDownItems.Add(Toggle("Start with Windows", IsAutoStart, SetAutoStart));
         m.Items.Add(settings);
 
         m.Items.Add(new ToolStripSeparator());
-        m.Items.Add(new ToolStripMenuItem("Keluar", null, (_, _) => app.Quit()));
+        m.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => app.Quit()));
         return m;
     }
 

@@ -70,15 +70,15 @@
         <Border DockPanel.Dock="Top" Background="#2B2B2B" Padding="8,4" BorderBrush="#1A000000" BorderThickness="0,0,0,1">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                    <Button x:Name="BtnOcr" Style="{StaticResource Action}" Content="&#xE8D2;" ToolTip="Ekstrak teks dari gambar ini" Click="Ocr_Click"/>
-                    <Button Style="{StaticResource Action}" Content="&#xE8C8;" ToolTip="Salin (Ctrl+C)" Click="Copy_Click"/>
-                    <Button Style="{StaticResource Action}" Content="&#xE74E;" ToolTip="Simpan sebagai (Ctrl+S)" Click="Save_Click"/>
-                    <Button Style="{StaticResource Action}" Content="&#xE838;" ToolTip="Buka folder screenshot" Click="Folder_Click"/>
+                    <Button x:Name="BtnOcr" Style="{StaticResource Action}" Content="&#xE8D2;" ToolTip="Extract text from this image" Click="Ocr_Click"/>
+                    <Button Style="{StaticResource Action}" Content="&#xE8C8;" ToolTip="Copy (Ctrl+C)" Click="Copy_Click"/>
+                    <Button Style="{StaticResource Action}" Content="&#xE74E;" ToolTip="Save as (Ctrl+S)" Click="Save_Click"/>
+                    <Button Style="{StaticResource Action}" Content="&#xE838;" ToolTip="Open screenshots folder" Click="Folder_Click"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <RadioButton x:Name="ToolPen" Style="{StaticResource ToolRadio}" Content="&#xE76D;" ToolTip="Pulpen" IsChecked="True" Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolPen" Style="{StaticResource ToolRadio}" Content="&#xE76D;" ToolTip="Pen" IsChecked="True" Checked="Tool_Changed"/>
                     <RadioButton x:Name="ToolHighlighter" Style="{StaticResource ToolRadio}" Content="&#xE7E6;" ToolTip="Highlighter" Checked="Tool_Changed"/>
-                    <RadioButton x:Name="ToolEraser" Style="{StaticResource ToolRadio}" Content="&#xE75C;" ToolTip="Penghapus" Checked="Tool_Changed"/>
+                    <RadioButton x:Name="ToolEraser" Style="{StaticResource ToolRadio}" Content="&#xE75C;" ToolTip="Eraser" Checked="Tool_Changed"/>
                     <Rectangle Width="1" Height="22" Margin="6,0" Fill="#40FFFFFF"/>
                     <RadioButton Style="{StaticResource Swatch}" Background="#FF3B30" IsChecked="True" Checked="Color_Changed"/>
                     <RadioButton Style="{StaticResource Swatch}" Background="#FFCC00" Checked="Color_Changed"/>
@@ -87,10 +87,10 @@
                     <RadioButton Style="{StaticResource Swatch}" Background="#FFFFFF" Checked="Color_Changed"/>
                     <RadioButton Style="{StaticResource Swatch}" Background="#000000" Checked="Color_Changed"/>
                     <Slider x:Name="SizeSlider" Width="90" Minimum="1" Maximum="30" Value="3" VerticalAlignment="Center"
-                            Margin="8,0" ToolTip="Ukuran" ValueChanged="Size_Changed"/>
+                            Margin="8,0" ToolTip="Size" ValueChanged="Size_Changed"/>
                     <Rectangle Width="1" Height="22" Margin="6,0" Fill="#40FFFFFF"/>
-                    <Button Style="{StaticResource Action}" Content="&#xE7A7;" ToolTip="Urungkan (Ctrl+Z)" Click="Undo_Click"/>
-                    <Button Style="{StaticResource Action}" Content="&#xE74D;" ToolTip="Hapus semua coretan" Click="Clear_Click"/>
+                    <Button Style="{StaticResource Action}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Click="Undo_Click"/>
+                    <Button Style="{StaticResource Action}" Content="&#xE74D;" ToolTip="Erase all mark-ups" Click="Clear_Click"/>
                 </StackPanel>
             </DockPanel>
         </Border>
