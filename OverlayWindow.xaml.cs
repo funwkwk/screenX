@@ -155,6 +155,7 @@ public partial class OverlayWindow : Window
         dock.Children.Add(new Border { Width = 22, Child = icon });
         dock.Children.Add(new TextBlock { Text = label, FontSize = 14, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         var b = new Button { Style = (Style)FindResource("MenuRow"), Content = dock };
+        System.Windows.Automation.AutomationProperties.SetName(b, label);
         b.Click += (_, _) => onClick();
         return b;
     }
@@ -366,6 +367,7 @@ public partial class OverlayWindow : Window
             else if (ctrl && e.Key == Key.C) Finish(SnipAction.CopyOnly);
             else if (ctrl && e.Key == Key.Z) Undo_Click(this, e);
             else if (ctrl && e.Key == Key.Y) Redo_Click(this, e);
+            else if (e.Key is Key.Delete or Key.Back && selectedEmoji != null) DeleteSelectedEmoji();
             else return;
             e.Handled = true;
             return;
@@ -476,7 +478,7 @@ public partial class OverlayWindow : Window
             : g == null ? full : new CombinedGeometry(GeometryCombineMode.Exclude, full, g);
         SelOutline.Data = g;
 
-        if (labelRect is { } lr && !markup)
+        if (labelRect is { } lr && (!markup || resizingSel))
         {
             SizeText.Text = $"{lr.Width} × {lr.Height}";
             SizeLabel.Visibility = Visibility.Visible;
@@ -512,12 +514,13 @@ public partial class OverlayWindow : Window
         TopPanel.Visibility = Visibility.Collapsed;
         Surface.Cursor = Cursors.Arrow;
 
-        var d = ToDip(sel);
-        Canvas.SetLeft(Ink, d.X);
-        Canvas.SetTop(Ink, d.Y);
-        Ink.Width = d.Width;
-        Ink.Height = d.Height;
-        if (mode == CaptureMode.Freeform) Ink.Clip = Polygon(pts, sel.X, sel.Y, 1 / scale);
+        // The ink layer spans the whole overlay and is clipped to the selection, so the selection can be
+        // resized afterwards without moving anything that has been drawn.
+        Canvas.SetLeft(Ink, 0);
+        Canvas.SetTop(Ink, 0);
+        Ink.Width = pw / scale;
+        Ink.Height = ph / scale;
+        UpdateInkClip();
         Ink.Visibility = Visibility.Visible;
 
         SelOutline.StrokeDashArray = new DoubleCollection { 5, 4 };
@@ -529,8 +532,137 @@ public partial class OverlayWindow : Window
         MarkupBar.Visibility = Visibility.Visible;
         MarkupBar.UpdateLayout();
         PositionBar();
+        UpdateSelHandles();
         Activate();
         Keyboard.Focus(this);
+    }
+
+    void UpdateInkClip() =>
+        Ink.Clip = mode == CaptureMode.Freeform ? Polygon(pts, 0, 0, 1 / scale) : new RectangleGeometry(ToDip(sel));
+
+    // ---- resizable selection (like Snipping Tool: drag a corner or an edge)
+
+    [Flags] enum Edge { None = 0, Left = 1, Top = 2, Right = 4, Bottom = 8 }
+
+    readonly List<(FrameworkElement Host, Edge Edges, Point Anchor)> selHandles = new();
+    bool resizingSel;
+    Int32Rect resizeStart;
+    Edge resizeEdges;
+
+    void BuildSelHandles()
+    {
+        if (selHandles.Count > 0) return;
+        var white = Brushes.White;
+        var shadow = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 0, Opacity = 0.6 };
+        foreach (var edges in new[]
+                 {
+                     Edge.Left | Edge.Top, Edge.Top, Edge.Right | Edge.Top, Edge.Right,
+                     Edge.Right | Edge.Bottom, Edge.Bottom, Edge.Left | Edge.Bottom, Edge.Left,
+                 })
+        {
+            bool corner = edges is (Edge.Left | Edge.Top) or (Edge.Right | Edge.Top) or (Edge.Right | Edge.Bottom) or (Edge.Left | Edge.Bottom);
+            FrameworkElement visual;
+            Point anchor; // the point of the host that sits on the selection corner / edge midpoint
+            double hw, hh;
+            if (corner)
+            {
+                hw = hh = 30;
+                // "L" bracket drawn for the top-left corner, mirrored for the others
+                visual = new WPath
+                {
+                    Data = Geometry.Parse("M8,26 V8 H26"), Stroke = white, StrokeThickness = 5,
+                    StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+                    RenderTransformOrigin = new Point(0.5, 0.5),
+                    RenderTransform = new ScaleTransform(edges.HasFlag(Edge.Right) ? -1 : 1, edges.HasFlag(Edge.Bottom) ? -1 : 1),
+                    Effect = shadow, Width = hw, Height = hh
+                };
+                // corner of the bracket is 2px outside the selection
+                anchor = new Point(edges.HasFlag(Edge.Right) ? hw - 10 : 10, edges.HasFlag(Edge.Bottom) ? hh - 10 : 10);
+            }
+            else
+            {
+                bool horizontal = edges is Edge.Top or Edge.Bottom;
+                hw = horizontal ? 44 : 20;
+                hh = horizontal ? 20 : 44;
+                visual = new Border
+                {
+                    Width = horizontal ? 34 : 5, Height = horizontal ? 5 : 34, CornerRadius = new CornerRadius(2.5),
+                    Background = white, Effect = shadow, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                };
+                anchor = new Point(hw / 2 + (edges == Edge.Left ? 2 : edges == Edge.Right ? -2 : 0),
+                                   hh / 2 + (edges == Edge.Top ? 2 : edges == Edge.Bottom ? -2 : 0));
+            }
+            var host = new Grid
+            {
+                Width = hw, Height = hh, Background = Brushes.Transparent,
+                Cursor = edges switch
+                {
+                    Edge.Left | Edge.Top or Edge.Right | Edge.Bottom => Cursors.SizeNWSE,
+                    Edge.Right | Edge.Top or Edge.Left | Edge.Bottom => Cursors.SizeNESW,
+                    Edge.Left or Edge.Right => Cursors.SizeWE,
+                    _ => Cursors.SizeNS,
+                }
+            };
+            host.Children.Add(visual);
+            System.Windows.Automation.AutomationProperties.SetName(host, "Resize " + edges);
+            var e2 = edges;
+            host.MouseLeftButtonDown += (_, e) =>
+            {
+                CloseFlyouts();
+                resizingSel = true;
+                resizeStart = sel;
+                resizeEdges = e2;
+                host.CaptureMouse();
+                e.Handled = true;
+            };
+            host.MouseMove += (_, e) => { if (resizingSel) ResizeSelection(e.GetPosition(Surface)); };
+            host.MouseLeftButtonUp += (_, e) =>
+            {
+                if (!resizingSel) return;
+                resizingSel = false;
+                host.ReleaseMouseCapture();
+                Redraw();
+                e.Handled = true;
+            };
+            SelHandles.Children.Add(host);
+            selHandles.Add((host, edges, anchor));
+        }
+    }
+
+    void ResizeSelection(Point dip)
+    {
+        var (px2, py2) = ToPhys(dip);
+        int l = resizeStart.X, t = resizeStart.Y, r = resizeStart.X + resizeStart.Width, b = resizeStart.Y + resizeStart.Height;
+        if (resizeEdges.HasFlag(Edge.Left)) l = px2;
+        if (resizeEdges.HasFlag(Edge.Right)) r = px2;
+        if (resizeEdges.HasFlag(Edge.Top)) t = py2;
+        if (resizeEdges.HasFlag(Edge.Bottom)) b = py2;
+        // dragging past the opposite edge flips the rectangle, like Snipping Tool
+        int x1 = Math.Clamp(Math.Min(l, r), 0, pw), x2 = Math.Clamp(Math.Max(l, r), 0, pw);
+        int y1 = Math.Clamp(Math.Min(t, b), 0, ph), y2 = Math.Clamp(Math.Max(t, b), 0, ph);
+        if (x2 - x1 < 8 || y2 - y1 < 8) return;
+        sel = new Int32Rect(x1, y1, x2 - x1, y2 - y1);
+        UpdateInkClip();
+        Redraw();
+        UpdateSelHandles();
+        PositionBar();
+        UpdateEmojiAdorner();
+    }
+
+    void UpdateSelHandles()
+    {
+        bool show = markup && mode == CaptureMode.Rectangle;
+        SelHandles.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+        BuildSelHandles();
+        var d = ToDip(sel);
+        foreach (var (host, edges, anchor) in selHandles)
+        {
+            double x = edges.HasFlag(Edge.Left) ? d.Left : edges.HasFlag(Edge.Right) ? d.Right : d.X + d.Width / 2;
+            double y = edges.HasFlag(Edge.Top) ? d.Top : edges.HasFlag(Edge.Bottom) ? d.Bottom : d.Y + d.Height / 2;
+            Canvas.SetLeft(host, x - anchor.X);
+            Canvas.SetTop(host, y - anchor.Y);
+        }
     }
 
     Rect BarRect => new(Canvas.GetLeft(MarkupBar), Canvas.GetTop(MarkupBar), MarkupBar.ActualWidth, MarkupBar.ActualHeight);
@@ -755,6 +887,7 @@ public partial class OverlayWindow : Window
         Ink.Strokes.Clear();
         Ink.Children.Clear();
         applyingHistory = false;
+        UpdateEmojiAdorner();
         Push(new Edit(new StrokeCollection(), strokes, NoEls, els));
     }
 
@@ -771,19 +904,17 @@ public partial class OverlayWindow : Window
     {
         foreach (var emo in Emojis)
         {
-            var cell = new Border
+            var cell = new Button
             {
-                Width = 48, Height = 46, CornerRadius = new CornerRadius(5), Background = Brushes.Transparent, Cursor = Cursors.Hand,
-                Child = new Image { Width = 30, Height = 30, Source = EmojiRenderer.Render(emo, 60) }
+                Width = 48, Height = 46, Cursor = Cursors.Hand, Template = Toast.FlatButtonTemplate(), FocusVisualStyle = null,
+                Content = new Image { Width = 30, Height = 30, Source = EmojiRenderer.Render(emo, 60) }
             };
-            cell.MouseEnter += (_, _) => cell.Background = (Brush)FindResource("Hover");
-            cell.MouseLeave += (_, _) => cell.Background = Brushes.Transparent;
-            cell.MouseLeftButtonUp += (_, ev) =>
+            System.Windows.Automation.AutomationProperties.SetName(cell, "Emoji " + emo);
+            cell.Click += (_, _) =>
             {
                 currentEmoji = emo;
                 EmojiFlyout.Visibility = Visibility.Collapsed;
                 SetTool(InkTool.Emoji);
-                ev.Handled = true;
             };
             EmojiGrid.Children.Add(cell);
         }
@@ -867,6 +998,20 @@ public partial class OverlayWindow : Window
 
     void Ink_ShapeDown(object sender, MouseButtonEventArgs e)
     {
+        if (tool != InkTool.Eraser && e.OriginalSource is Image hitEmoji && hitEmoji.Tag is EmojiInfo && Ink.Children.Contains(hitEmoji))
+        {
+            CloseSubFlyouts();
+            SelectEmoji(hitEmoji);
+            BeginEmojiDrag(EmojiDrag.Move, e, hitEmoji);
+            return;
+        }
+        if (selectedEmoji != null)
+        {
+            // first click outside a selected emoji only deselects it (like Snipping Tool)
+            bool stampTool = tool == InkTool.Emoji;
+            SelectEmoji(null);
+            if (stampTool) { e.Handled = true; return; }
+        }
         if (tool == InkTool.Eraser)
         {
             // Stroke erasing is built in; shapes and emoji are elements, so remove the one that was clicked.
@@ -874,6 +1019,7 @@ public partial class OverlayWindow : Window
             {
                 Ink.Children.Remove(hit);
                 Push(new Edit(new StrokeCollection(), new StrokeCollection(), NoEls, new[] { hit }));
+                UpdateEmojiAdorner();
                 e.Handled = true;
             }
             return;
@@ -884,12 +1030,10 @@ public partial class OverlayWindow : Window
 
         if (tool == InkTool.Emoji)
         {
-            const double size = 56;
-            var img = new Image { Width = size, Height = size, Source = EmojiRenderer.Render(currentEmoji, (int)Math.Ceiling(size * scale)) };
-            InkCanvas.SetLeft(img, pos.X - size / 2);
-            InkCanvas.SetTop(img, pos.Y - size / 2);
+            var img = CreateEmoji(currentEmoji, pos, 56);
             Ink.Children.Add(img);
             Push(new Edit(new StrokeCollection(), new StrokeCollection(), new UIElement[] { img }, NoEls));
+            SelectEmoji(img);
             e.Handled = true;
             return;
         }
@@ -916,6 +1060,7 @@ public partial class OverlayWindow : Window
 
     void Ink_ShapeMove(object sender, MouseEventArgs e)
     {
+        if (emojiDrag != EmojiDrag.None) { MoveEmojiDrag(e); return; }
         if (tool != InkTool.Shapes || shapePath == null) return;
         var p = e.GetPosition(Ink);
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && shapeKind is ShapeKind.Rectangle or ShapeKind.Ellipse)
@@ -929,6 +1074,7 @@ public partial class OverlayWindow : Window
 
     void Ink_ShapeUp(object sender, MouseButtonEventArgs e)
     {
+        if (emojiDrag != EmojiDrag.None) { EndEmojiDrag(e); return; }
         if (tool != InkTool.Shapes || shapePath == null) return;
         Ink.ReleaseMouseCapture();
         var b = shapePath.Data.Bounds;
@@ -965,7 +1111,8 @@ public partial class OverlayWindow : Window
 
     // ---- undo / redo (ink strokes plus shape / emoji elements)
 
-    sealed record Edit(StrokeCollection AddedStrokes, StrokeCollection RemovedStrokes, UIElement[] AddedEls, UIElement[] RemovedEls);
+    sealed record Edit(StrokeCollection AddedStrokes, StrokeCollection RemovedStrokes, UIElement[] AddedEls, UIElement[] RemovedEls,
+        Image? Target = null, EmojiState Before = default, EmojiState After = default);
 
     static readonly UIElement[] NoEls = Array.Empty<UIElement>();
 
@@ -998,7 +1145,161 @@ public partial class OverlayWindow : Window
         if (addS.Count > 0) Ink.Strokes.Add(addS);
         foreach (var el in remE) Ink.Children.Remove(el);
         foreach (var el in addE) Ink.Children.Add(el);
+        if (e.Target != null) SetEmojiState(e.Target, forward ? e.After : e.Before, rerender: true);
         applyingHistory = false;
+        UpdateEmojiAdorner();
+    }
+
+    // ---- emoji objects: select, move, resize, rotate
+
+    sealed class EmojiInfo { public string Emoji = ""; }
+    internal readonly record struct EmojiState(double X, double Y, double Size, double Angle);
+    enum EmojiDrag { None, Move, Resize, Rotate }
+
+    const double AdornerPad = 6;
+    Image? selectedEmoji;
+    EmojiDrag emojiDrag;
+    EmojiState dragStart;
+    Point dragOrigin;
+    UIElement? dragCapture;
+    bool adornerWired;
+
+    int EmojiPx(double size) => (int)Math.Ceiling(Math.Clamp(size * scale, 16, 768));
+
+    Image CreateEmoji(string emoji, Point center, double size)
+    {
+        var img = new Image
+        {
+            Width = size, Height = size, Tag = new EmojiInfo { Emoji = emoji }, Cursor = Cursors.SizeAll,
+            RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new RotateTransform(0),
+            Source = EmojiRenderer.Render(emoji, EmojiPx(size))
+        };
+        InkCanvas.SetLeft(img, center.X - size / 2);
+        InkCanvas.SetTop(img, center.Y - size / 2);
+        return img;
+    }
+
+    static double AngleOf(Image img) => img.RenderTransform is RotateTransform rt ? rt.Angle : 0;
+
+    EmojiState GetEmojiState(Image img) => new(InkCanvas.GetLeft(img), InkCanvas.GetTop(img), img.Width, AngleOf(img));
+
+    void SetEmojiState(Image img, EmojiState st, bool rerender)
+    {
+        InkCanvas.SetLeft(img, st.X);
+        InkCanvas.SetTop(img, st.Y);
+        img.Width = img.Height = st.Size;
+        img.RenderTransform = new RotateTransform(st.Angle);
+        if (rerender && img.Tag is EmojiInfo info) img.Source = EmojiRenderer.Render(info.Emoji, EmojiPx(st.Size));
+    }
+
+    void SelectEmoji(Image? img)
+    {
+        selectedEmoji = img;
+        UpdateEmojiAdorner();
+    }
+
+    void WireAdorner()
+    {
+        if (adornerWired) return;
+        adornerWired = true;
+        foreach (var h in new FrameworkElement[] { HandleTL, HandleTR, HandleBL, HandleBR })
+        {
+            h.MouseLeftButtonDown += (_, e) => BeginEmojiDrag(EmojiDrag.Resize, e, h);
+            h.MouseMove += (_, e) => { if (emojiDrag != EmojiDrag.None) MoveEmojiDrag(e); };
+            h.MouseLeftButtonUp += (_, e) => { if (emojiDrag != EmojiDrag.None) EndEmojiDrag(e); };
+        }
+        RotateHandle.MouseLeftButtonDown += (_, e) => BeginEmojiDrag(EmojiDrag.Rotate, e, RotateHandle);
+        RotateHandle.MouseMove += (_, e) => { if (emojiDrag != EmojiDrag.None) MoveEmojiDrag(e); };
+        RotateHandle.MouseLeftButtonUp += (_, e) => { if (emojiDrag != EmojiDrag.None) EndEmojiDrag(e); };
+    }
+
+    void UpdateEmojiAdorner()
+    {
+        WireAdorner();
+        if (selectedEmoji == null || !Ink.Children.Contains(selectedEmoji) || Ink.Visibility != Visibility.Visible)
+        {
+            selectedEmoji = null;
+            EmojiAdorner.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var st = GetEmojiState(selectedEmoji);
+        double w = st.Size + AdornerPad * 2;
+        Canvas.SetLeft(EmojiAdorner, Canvas.GetLeft(Ink) + st.X - AdornerPad);
+        Canvas.SetTop(EmojiAdorner, Canvas.GetTop(Ink) + st.Y - AdornerPad);
+        EmojiAdorner.Width = EmojiAdorner.Height = w;
+        AdornerBox.Width = AdornerBox.Height = w;
+        void Place(FrameworkElement h, double x, double y) { Canvas.SetLeft(h, x - h.Width / 2); Canvas.SetTop(h, y - h.Height / 2); }
+        Place(HandleTL, 0, 0);
+        Place(HandleTR, w, 0);
+        Place(HandleBL, 0, w);
+        Place(HandleBR, w, w);
+        Place(RotateHandle, w / 2, -RotateHandle.Height / 2 - 16);
+        EmojiAdorner.RenderTransform = new RotateTransform(st.Angle, w / 2, w / 2);
+        EmojiAdorner.Visibility = Visibility.Visible;
+    }
+
+    void BeginEmojiDrag(EmojiDrag kind, MouseButtonEventArgs e, UIElement captureOn)
+    {
+        if (selectedEmoji == null) return;
+        emojiDrag = kind;
+        dragStart = GetEmojiState(selectedEmoji);
+        dragOrigin = e.GetPosition(Ink);
+        dragCapture = captureOn;
+        captureOn.CaptureMouse();
+        e.Handled = true;
+    }
+
+    void MoveEmojiDrag(MouseEventArgs e)
+    {
+        if (selectedEmoji == null) return;
+        var p = e.GetPosition(Ink);
+        var c = new Point(dragStart.X + dragStart.Size / 2, dragStart.Y + dragStart.Size / 2);
+        EmojiState next = dragStart;
+        switch (emojiDrag)
+        {
+            case EmojiDrag.Move:
+                next = dragStart with { X = dragStart.X + p.X - dragOrigin.X, Y = dragStart.Y + p.Y - dragOrigin.Y };
+                break;
+            case EmojiDrag.Resize:
+                // resize around the centre: measure the pointer in the emoji's own (unrotated) frame
+                double a = -dragStart.Angle * Math.PI / 180, dx = p.X - c.X, dy = p.Y - c.Y;
+                double lx = dx * Math.Cos(a) - dy * Math.Sin(a), ly = dx * Math.Sin(a) + dy * Math.Cos(a);
+                double size = Math.Clamp(2 * (Math.Max(Math.Abs(lx), Math.Abs(ly)) - AdornerPad), 16, 640);
+                next = dragStart with { X = c.X - size / 2, Y = c.Y - size / 2, Size = size };
+                break;
+            case EmojiDrag.Rotate:
+                double ang = Math.Atan2(p.Y - c.Y, p.X - c.X) * 180 / Math.PI + 90;
+                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) ang = Math.Round(ang / 15) * 15;
+                ang = ((ang % 360) + 360) % 360;
+                next = dragStart with { Angle = ang };
+                break;
+        }
+        SetEmojiState(selectedEmoji, next, rerender: false);
+        UpdateEmojiAdorner();
+        e.Handled = true;
+    }
+
+    void EndEmojiDrag(MouseButtonEventArgs e)
+    {
+        var kind = emojiDrag;
+        emojiDrag = EmojiDrag.None;
+        dragCapture?.ReleaseMouseCapture();
+        dragCapture = null;
+        e.Handled = true;
+        if (selectedEmoji == null) return;
+        var after = GetEmojiState(selectedEmoji);
+        if (kind == EmojiDrag.Resize) SetEmojiState(selectedEmoji, after, rerender: true); // crisp at the new size
+        if (after != dragStart)
+            Push(new Edit(new StrokeCollection(), new StrokeCollection(), NoEls, NoEls, selectedEmoji, dragStart, after));
+    }
+
+    void DeleteSelectedEmoji()
+    {
+        if (selectedEmoji == null) return;
+        var img = selectedEmoji;
+        Ink.Children.Remove(img);
+        Push(new Edit(new StrokeCollection(), new StrokeCollection(), NoEls, new UIElement[] { img }));
+        SelectEmoji(null);
     }
 
     void Undo_Click(object sender, RoutedEventArgs e)
@@ -1062,6 +1363,8 @@ public partial class OverlayWindow : Window
             if (mode == CaptureMode.Freeform) dc.PushClip(Polygon(pts, sel.X, sel.Y, 1 / scale));
             dc.DrawImage(baseImg, r);
             dc.PushClip(new RectangleGeometry(r));
+            var origin = ToDip(sel);
+            dc.PushTransform(new TranslateTransform(-origin.X, -origin.Y));
             foreach (UIElement el in Ink.Children)
             {
                 if (el is WPath p)
@@ -1070,9 +1373,16 @@ public partial class OverlayWindow : Window
                         LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round
                     }, p.Data);
                 else if (el is Image im)
-                    dc.DrawImage(im.Source, new Rect(InkCanvas.GetLeft(im), InkCanvas.GetTop(im), im.Width, im.Height));
+                {
+                    var st = GetEmojiState(im);
+                    var src = im.Tag is EmojiInfo info ? EmojiRenderer.Render(info.Emoji, EmojiPx(st.Size)) : im.Source;
+                    dc.PushTransform(new RotateTransform(st.Angle, st.X + st.Size / 2, st.Y + st.Size / 2));
+                    dc.DrawImage(src, new Rect(st.X, st.Y, st.Size, st.Size));
+                    dc.Pop();
+                }
             }
             Ink.Strokes.Draw(dc);
+            dc.Pop();
             dc.Pop();
             if (mode == CaptureMode.Freeform) dc.Pop();
         }
@@ -1118,7 +1428,7 @@ public partial class OverlayWindow
         sel = r;
         EnterMarkup();
         var s = new StylusPointCollection { new StylusPoint(r.X / scale + 30, r.Y / scale + 60), new StylusPoint(r.X / scale + 160, r.Y / scale + 40), new StylusPoint(r.X / scale + 300, r.Y / scale + 70) };
-        Ink.Strokes.Add(new Stroke(new StylusPointCollection(s.Select(p => new StylusPoint(p.X - r.X / scale, p.Y - r.Y / scale))), Ink.DefaultDrawingAttributes.Clone()));
+        Ink.Strokes.Add(new Stroke(s, Ink.DefaultDrawingAttributes.Clone()));
     }
 
     internal void TestOpen(string which)
@@ -1139,15 +1449,53 @@ public partial class OverlayWindow
 
     internal BitmapSource TestFlatten() => FlattenMarkup();
 
+    /// <summary>Simulates dragging the bottom-right handle by (dx, dy) physical pixels.</summary>
+    internal Int32Rect TestResize(int dx, int dy)
+    {
+        resizeStart = sel;
+        resizeEdges = Edge.Right | Edge.Bottom;
+        resizingSel = true;
+        ResizeSelection(new Point((sel.X + sel.Width + dx) / scale, (sel.Y + sel.Height + dy) / scale));
+        resizingSel = false;
+        Redraw();
+        return sel;
+    }
+
+    /// <summary>Distinct button heights (and the Capture pill) per bar, for alignment checks.</summary>
+    internal string TestButtonHeights()
+    {
+        string Heights(FrameworkElement bar)
+        {
+            bar.UpdateLayout();
+            var hs = new SortedSet<double>();
+            void Walk(DependencyObject d)
+            {
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(d); i++)
+                {
+                    var c = VisualTreeHelper.GetChild(d, i);
+                    if (c is ButtonBase b && b.IsVisible && b.Name != "BtnCapture" && b.Name != "BtnCaptureMenu") hs.Add(Math.Round(b.ActualHeight, 1));
+                    Walk(c);
+                }
+            }
+            Walk(bar);
+            return string.Join("/", hs);
+        }
+        var capture = (FrameworkElement)VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(BtnCapture));
+        return $"top={Heights(Toolbar)} markup={Heights(MarkupBar)} shapes={Heights(ShapesFlyout)} capturePill={capture.ActualHeight}+margins={capture.Margin.Top + capture.Margin.Bottom}";
+    }
+
     internal void TestAddShapes()
     {
+        var o = ToDip(sel).TopLeft;
+        Point P(double x, double y) => new(o.X + x, o.Y + y);
         shapeKind = ShapeKind.Arrow;
-        var arrow = new WPath { Stroke = Brushes.Red, StrokeThickness = 4, Fill = Brushes.Red, Data = ShapeGeometry(new Point(420, 260), new Point(560, 160)) };
+        var arrow = new WPath { Stroke = Brushes.Red, StrokeThickness = 4, Fill = Brushes.Red, Data = ShapeGeometry(P(420, 260), P(560, 160)) };
         shapeKind = ShapeKind.Rectangle;
-        var rect = new WPath { Stroke = Brushes.Red, StrokeThickness = 4, Data = ShapeGeometry(new Point(600, 120), new Point(820, 260)) };
-        var img = new Image { Width = 56, Height = 56, Source = EmojiRenderer.Render("\U0001F525", (int)(56 * scale)) };
-        InkCanvas.SetLeft(img, 300); InkCanvas.SetTop(img, 180);
+        var rect = new WPath { Stroke = Brushes.Red, StrokeThickness = 4, Data = ShapeGeometry(P(600, 120), P(820, 260)) };
+        var img = CreateEmoji("\U0001F525", P(328, 208), 56);
+        SetEmojiState(img, GetEmojiState(img) with { Angle = 30 }, rerender: false);
         Ink.Children.Add(arrow); Ink.Children.Add(rect); Ink.Children.Add(img);
+        SelectEmoji(img);
     }
 
     internal double TestToolbarWidth(CaptureMode m)

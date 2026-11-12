@@ -14,7 +14,14 @@
     <AssemblyName>screenX</AssemblyName>
     <RootNamespace>ScreenX</RootNamespace>
     <Product>screenX</Product>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
+    <Authors>funwkwk</Authors>
+    <Company>funwkwk</Company>
+    <Copyright>Copyright (c) 2026 funwkwk (https://funwkwk.my.id)</Copyright>
+    <PackageProjectUrl>https://funwkwk.my.id</PackageProjectUrl>
+    <Description>screenX - open-source screen capture, recording, colour picker, OCR and markup tool.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/funwkwk/screenX</RepositoryUrl>
     <NoWarn>$(NoWarn);CA1416;WFO0003</NoWarn>
   </PropertyGroup>
 
@@ -23,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
   </ItemGroup>
 

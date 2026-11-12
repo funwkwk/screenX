@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>screenX</string>
+    <key>CFBundleDisplayName</key>
+    <string>screenX</string>
+    <key>CFBundleIdentifier</key>
+    <string>id.my.funwkwk.screenx</string>
+    <key>CFBundleExecutable</key>
+    <string>screenX</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>__VERSION__</string>
+    <key>CFBundleVersion</key>
+    <string>__VERSION__</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>screenX records your microphone only when you switch it on for a screen recording.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright (c) 2026 funwkwk. MIT licence.</string>
+</dict>
+</plist>

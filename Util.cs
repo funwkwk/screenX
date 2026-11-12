@@ -39,6 +39,25 @@ public static class ImageUtil
         enc.Save(fs);
     }
 
+    /// <summary>The snip with the border from the settings drawn along its edges (same pixel size).</summary>
+    public static BitmapSource WithBorder(BitmapSource bmp)
+    {
+        var s = Settings.Current;
+        double t = Math.Clamp(s.BorderSize, 1, Math.Max(1, Math.Min(bmp.PixelWidth, bmp.PixelHeight) / 3.0));
+        Color c;
+        try { c = (Color)ColorConverter.ConvertFromString(s.BorderColor); } catch { c = Colors.Red; }
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawImage(bmp, new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
+            dc.DrawRectangle(null, new Pen(new SolidColorBrush(c), t), new Rect(t / 2, t / 2, bmp.PixelWidth - t, bmp.PixelHeight - t));
+        }
+        var rtb = new RenderTargetBitmap(bmp.PixelWidth, bmp.PixelHeight, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+        return rtb;
+    }
+
     public static string AutoSave(BitmapSource bmp)
     {
         var path = UniquePath(Settings.Current.ScreenshotFolder, "Screenshot", ".png");
@@ -130,7 +149,12 @@ public static class WinUtil
         Native.SetWindowLongPtr(h, Native.GWL_EXSTYLE, new IntPtr(ex | (uint)flags));
     }
 
-    public static void ExcludeFromCapture(Window w) => Native.SetWindowDisplayAffinity(Hwnd(w), Native.WDA_EXCLUDEFROMCAPTURE);
+    public static void ExcludeFromCapture(Window w)
+    {
+        // Test hook: SCREENX_SHOW_IN_CAPTURE=1 keeps screenX's own windows visible in screenshots.
+        if (Environment.GetEnvironmentVariable("SCREENX_SHOW_IN_CAPTURE") == "1") return;
+        Native.SetWindowDisplayAffinity(Hwnd(w), Native.WDA_EXCLUDEFROMCAPTURE);
+    }
 
     public static void DarkTitleBar(Window w)
     {

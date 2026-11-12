@@ -1,72 +1,167 @@
 using System;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text.RegularExpressions;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace ScreenX;
 
-/// <summary>Reverse image search: uploads the snip to Google Lens and opens the results in the browser.</summary>
+/// <summary>
+/// Reverse image search with Google Lens, hands-free.
+/// screenX copies the snip, opens Google's own "Search any image with Google Lens" dialog in the user's browser and,
+/// once that dialog is the active tab, pastes the snip into it. The upload therefore happens inside the browser's
+/// session, so the results page shows the image (a background upload by screenX leaves it broken).
+/// The paste is only sent when the foreground window is a browser showing the Google page; otherwise the user gets
+/// a notification to paste or drag the image themselves.
+/// </summary>
 public static class GoogleLens
 {
-    const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+    public const string LensDialogUrl = "https://www.google.com/?olud";
+
+    static readonly string[] Browsers = { "brave", "chrome", "msedge", "firefox", "opera", "opera_gx", "vivaldi", "arc", "chromium" };
 
     public static async Task SearchAsync(BitmapSource img)
     {
-        Toast.Notify("Mencari dengan Google Lens…", "Mengunggah snip ke Google.");
+        ClipboardUtil.SetImage(img);
+        string file = Path.Combine(Path.GetTempPath(), "screenX", "Google Lens snip.png");
+        try { ImageUtil.Save(img, file); } catch { file = ""; }
+
+        // screenX just received the user's click, so it may hand foreground rights to the browser it launches
+        Native.AllowSetForegroundWindow(-1);
+        Log("---- Google Lens search: opening " + LensDialogUrl);
+        WinUtil.OpenPath(LensDialogUrl);
+        Toast.Notify("Searching with Google Lens…", "Opening Google Lens in your browser.");
+
+        if (await PasteIntoLensAsync())
+        {
+            Toast.CloseCurrent();
+            return;
+        }
+
+        if (file.Length > 0)
+            Toast.Notify("Google Lens is open in your browser",
+                "The snip could not be pasted automatically. Press Ctrl+V in the Google Lens window, or drag the image file into it.",
+                null, null, ("Show image file", (Action)(() => WinUtil.RevealFile(file))));
+        else
+            Toast.Notify("Google Lens is open in your browser",
+                "The snip could not be pasted automatically. Press Ctrl+V in the Google Lens window.");
+    }
+
+    /// <summary>
+    /// Waits for the Lens tab to be in front, pastes the clipboard image into it and checks that Google really
+    /// started the search (the tab leaves the "Google" page). The Lens dialog is opened by script a moment after
+    /// the page loads, so an early paste can be ignored; in that case it is pasted again.
+    /// </summary>
+    static async Task<bool> PasteIntoLensAsync()
+    {
+        var sw = Stopwatch.StartNew();
+        int attempts = 0;
+        while (sw.Elapsed < TimeSpan.FromSeconds(25) && attempts < 4)
+        {
+            await Task.Delay(250);
+            var hwnd = Native.GetForegroundWindow();
+            if (!IsLensTab(hwnd))
+            {
+                // the browser may have opened the tab behind other windows: bring that window forward
+                var lens = FindLensWindow();
+                if (lens == IntPtr.Zero) continue;
+                Log($"bringing Lens window forward (foreground was \"{TitleOf(hwnd)}\")");
+                Native.ShowWindow(lens, 9 /* SW_RESTORE if minimised */);
+                Native.SetForegroundWindow(lens);
+                continue; // re-check on the next tick that it really is in front
+            }
+
+            // give the page time to open its Lens dialog, then make sure it is still the active tab
+            await Task.Delay(attempts == 0 ? 1500 : 1200);
+            if (Native.GetForegroundWindow() != hwnd || !IsLensTab(hwnd)) continue;
+            attempts++;
+            Log($"paste attempt {attempts} into \"{TitleOf(hwnd)}\"");
+            SendCtrlV();
+
+            // success = the tab navigates away from the plain "Google" page (to the Lens results)
+            var wait = Stopwatch.StartNew();
+            while (wait.Elapsed < TimeSpan.FromSeconds(6))
+            {
+                await Task.Delay(250);
+                if (!IsLensTab(hwnd))
+                {
+                    Log($"search started: \"{TitleOf(hwnd)}\"");
+                    return true;
+                }
+            }
+            Log("page did not react to the paste, retrying");
+        }
+        Log($"gave up after {attempts} paste attempt(s), {sw.Elapsed.TotalSeconds:F1}s; foreground \"{TitleOf(Native.GetForegroundWindow())}\"");
+        return false;
+    }
+
+    static string TitleOf(IntPtr hwnd)
+    {
+        var sb = new StringBuilder(512);
+        if (hwnd != IntPtr.Zero) Native.GetWindowText(hwnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    static readonly string LogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "screenX", "lens.log");
+
+    /// <summary>Small diagnostic log of the last Lens searches (window titles only, no image data).</summary>
+    static void Log(string line)
+    {
         try
         {
-            string? url = await UploadAsync(Downscale(img, 1600));
-            if (url != null)
-            {
-                Toast.CloseCurrent();
-                WinUtil.OpenPath(url);
-                return;
-            }
+            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 64_000) File.Delete(LogPath);
+            File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {line}{Environment.NewLine}");
         }
-        catch { /* fall through to manual paste */ }
-
-        // Fallback: put the image on the clipboard and open Lens so the user can paste it.
-        ClipboardUtil.SetImage(img);
-        WinUtil.OpenPath("https://lens.google.com/");
-        Toast.Notify("Google Lens dibuka di browser", "Gagal mengunggah otomatis. Gambar sudah disalin, tempel dengan Ctrl+V di halaman Google Lens.");
+        catch { }
     }
 
-    /// <summary>Returns the Lens results URL, or null if Google did not hand one back.</summary>
-    public static async Task<string?> UploadAsync(BitmapSource img)
+    static IntPtr FindLensWindow()
     {
-        byte[] png = ImageUtil.EncodePng(img);
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-
-        using var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent(png);
-        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        form.Add(file, "encoded_image", "screenshot.png");
-        form.Add(new StringContent($"{img.PixelHeight},{img.PixelWidth}"), "processed_image_dimensions");
-
-        long ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        using var resp = await http.PostAsync($"https://lens.google.com/v3/upload?hl=id&re=df&stcs={ms}&ep=subb", form);
-
-        if (resp.Headers.Location is { } loc)
-            return loc.IsAbsoluteUri ? loc.ToString() : new Uri(new Uri("https://lens.google.com"), loc).ToString();
-
-        string body = await resp.Content.ReadAsStringAsync();
-        var m = Regex.Match(body, @"https://lens\.google\.com/search\?[^""'<>\s]+");
-        return m.Success ? WebUtility.HtmlDecode(m.Value) : null;
+        IntPtr found = IntPtr.Zero;
+        Native.EnumWindows((h, _) =>
+        {
+            if (Native.IsWindowVisible(h) && IsLensTab(h)) { found = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 
-    static BitmapSource Downscale(BitmapSource src, int maxSide)
+    static bool IsLensTab(IntPtr hwnd)
     {
-        int longest = Math.Max(src.PixelWidth, src.PixelHeight);
-        if (longest <= maxSide) return src;
-        double k = (double)maxSide / longest;
-        var t = new TransformedBitmap(src, new ScaleTransform(k, k));
-        t.Freeze();
-        return t;
+        if (hwnd == IntPtr.Zero) return false;
+        var sb = new StringBuilder(512);
+        Native.GetWindowText(hwnd, sb, sb.Capacity);
+        string title = sb.ToString();
+        // the Lens dialog page is titled just "Google"; the window adds the browser (and maybe a profile):
+        // "Google - Brave", "Google - Google Chrome", "Google - Personal - Microsoft Edge", "Google — Mozilla Firefox"
+        string t = title.Trim();
+        bool isGooglePage = t == "Google" || t.StartsWith("Google - ", StringComparison.Ordinal)
+                            || t.StartsWith("Google \u2014 ", StringComparison.Ordinal);
+        if (!isGooglePage) return false;
+
+        Native.GetWindowThreadProcessId(hwnd, out uint pid);
+        try
+        {
+            using var p = Process.GetProcessById((int)pid);
+            return Browsers.Contains(p.ProcessName.ToLowerInvariant());
+        }
+        catch { return false; }
+    }
+
+    static void SendCtrlV()
+    {
+        const ushort VK_CONTROL = 0x11, VK_V = 0x56;
+        var inputs = new Native.INPUT[4];
+        for (int i = 0; i < 4; i++) inputs[i].type = Native.INPUT_KEYBOARD;
+        inputs[0].U.ki.wVk = VK_CONTROL;
+        inputs[1].U.ki.wVk = VK_V;
+        inputs[2].U.ki.wVk = VK_V; inputs[2].U.ki.dwFlags = Native.KEYEVENTF_KEYUP;
+        inputs[3].U.ki.wVk = VK_CONTROL; inputs[3].U.ki.dwFlags = Native.KEYEVENTF_KEYUP;
+        Native.SendInput(4, inputs, Marshal.SizeOf<Native.INPUT>());
     }
 }

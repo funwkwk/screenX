@@ -1,0 +1,44 @@
+name: macOS build
+
+on:
+  push:
+    paths:
+      - 'macos/**'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build screenX.app and the .dmg
+        run: |
+          set -o pipefail
+          bash macos/build.sh 1.1.0 2>&1 | tee build.log
+
+      - name: Report build errors
+        if: failure()
+        run: |
+          MSG=$(grep -E "error" build.log | sort -u | head -n 80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          if [ -z "$MSG" ]; then MSG=$(tail -n 40 build.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); fi
+          echo "::error title=Build errors::${MSG}"
+
+      - name: Upload the .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenX-macOS
+          path: macos/build/*.dmg
+
+      - name: Publish the latest macOS build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete macos-latest --yes --cleanup-tag || true
+          gh release create macos-latest macos/build/*.dmg --prerelease --target "$GITHUB_SHA" \
+            --title "screenX for macOS (latest build)" \
+            --notes "Automatic build of the macOS version. Open the .dmg and drag screenX to Applications. The app is not notarised: the first time, right-click screenX and choose Open (or allow it under System Settings > Privacy & Security)."
