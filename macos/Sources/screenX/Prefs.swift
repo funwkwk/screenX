@@ -17,6 +17,7 @@ enum Prefs {
         static let videoFolder = "videoFolder"
         static let snipDelay = "snipDelay"
         static let snipMode = "snipMode"
+        static let quickMarkup = "quickMarkup"
     }
 
     static let d = UserDefaults.standard
@@ -38,6 +39,7 @@ enum Prefs {
             Key.videoFolder: home.appendingPathComponent("Movies/screenX").path,
             Key.snipDelay: 0,
             Key.snipMode: "rectangle",
+            Key.quickMarkup: true,
         ])
     }
 
@@ -63,6 +65,11 @@ enum Prefs {
     static var snipMode: SnipMode {
         get { SnipMode(rawValue: d.string(forKey: Key.snipMode) ?? "") ?? .rectangle }
         set { d.set(newValue.rawValue, forKey: Key.snipMode) }
+    }
+
+    static var quickMarkup: Bool {
+        get { d.bool(forKey: Key.quickMarkup) }
+        set { d.set(newValue, forKey: Key.quickMarkup) }
     }
 
     /// "Screenshot 2026-01-31 101530.png" style unique file inside a folder (created when missing).
