@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -86,7 +87,7 @@ public static class SelfTest
                 SaveVisual((FrameworkElement)ov2.Content, Path.Combine(outDir, "overlay-color.png"));
                 ov2.Close();
 
-                var ed = new EditorWindow(textImg, null);
+                var ed = new EditorWindow(textImg, null) { Topmost = true };
                 ed.Show();
                 await Task.Delay(600);
                 // draw some ink to verify flattening
@@ -97,8 +98,57 @@ public static class SelfTest
                 SaveWindow(ed, Path.Combine(outDir, "editor.png"));
                 var flat = (BitmapSource)typeof(EditorWindow).GetMethod("Flatten", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(ed, null)!;
                 ImageUtil.Save(flat, Path.Combine(outDir, "editor-flatten.png"));
+                Call(ed, "Crop_Click", ed, new RoutedEventArgs());
+                await Task.Delay(400);
+                SaveWindow(ed, Path.Combine(outDir, "editor-crop.png"));
+                Call(ed, "CropCancel_Click", ed, new RoutedEventArgs());
+                Call(ed, "Tool_Click", ed.FindName("ToolShapes"), new RoutedEventArgs());
+                await Task.Delay(500);
+                SaveWindow(ed, Path.Combine(outDir, "editor-shapes.png"), pad: 420);
                 ed.Close();
                 L("editor render: OK");
+
+                SettingsWindow.Open();
+                foreach (Window w in Application.Current.Windows)
+                    if (w is SettingsWindow sw)
+                    {
+                        sw.Topmost = true;
+                        await Task.Delay(700);
+                        SaveWindow(sw, Path.Combine(outDir, "settings.png"));
+                        sw.Close();
+                        L("settings render: OK");
+                    }
+
+                // Recording UI: region layer + bar, then a short recording with audio
+                var ffm = FfmpegLocator.Find();
+                if (ffm != null)
+                {
+                    bool micBefore = Settings.Current.RecordMic, sysBefore = Settings.Current.RecordSystemAudio;
+                    Settings.Current.RecordMic = true; Settings.Current.RecordSystemAudio = true; // not saved
+                    var rc = new RecordingController(new Int32Rect(vs.X + 200, vs.Y + 160, 800, 450));
+                    var layer = (Window)Field(rc, "layer");
+                    var bar = (Window)Field(rc, "bar");
+                    rc.Show();
+                    await Task.Delay(800);
+                    SaveScreen((FrameworkElement)layer.Content, Path.Combine(outDir, "record-setup.png"), shot);                    SaveVisual((FrameworkElement)bar.Content, Path.Combine(outDir, "record-bar-idle.png"));
+                    _ = (Task)Call(rc, "StartAsync")!;
+                    await Task.Delay(5500);
+                    SaveScreen((FrameworkElement)layer.Content, Path.Combine(outDir, "record-recording.png"), shot);
+                    SaveVisual((FrameworkElement)bar.Content, Path.Combine(outDir, "record-bar-recording.png"));
+                    string final = (string)Field(rc, "finalPath");
+                    await (Task)Call(rc, "StopAsync", true)!;
+                    Settings.Current.RecordMic = micBefore; Settings.Current.RecordSystemAudio = sysBefore;
+                    var probe = new System.Diagnostics.ProcessStartInfo(ffm) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+                    foreach (var a in new[] { "-hide_banner", "-i", final }) probe.ArgumentList.Add(a);
+                    using (var p = System.Diagnostics.Process.Start(probe)!)
+                    {
+                        string info = await p.StandardError.ReadToEndAsync();
+                        foreach (var line in info.Split('\n'))
+                            if (line.Contains("Stream #") || line.Contains("Duration")) L("recorded: " + line.Trim());
+                    }
+                    L($"recorded file: {final} exists={File.Exists(final)}");
+                    try { File.Delete(final); } catch { }
+                }
 
                 // Recording: 2 seconds of a 640x360 region
                 var ff = FfmpegLocator.Find();
@@ -135,18 +185,36 @@ public static class SelfTest
         return rtb;
     }
 
-    static void SaveWindow(Window w, string path)
+    static object? Call(object o, string name, params object?[] args) =>
+        o.GetType().GetMethod(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)!.Invoke(o, args);
+
+    static object Field(object o, string name) =>
+        o.GetType().GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(o)!;
+
+    static void SaveWindow(Window w, string path, int pad = 0)
     {
         Native.GetWindowRect(WinUtil.Hwnd(w), out var r);
-        ImageUtil.Save(ScreenCapture.Capture(new Int32Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)), path);
+        var vs = ScreenCapture.VirtualScreen;
+        int b = Math.Min(r.Bottom + pad, vs.Y + vs.Height);
+        ImageUtil.Save(ScreenCapture.Capture(new Int32Rect(r.Left, r.Top, r.Right - r.Left, b - r.Top)), path);
     }
 
-    static void SaveVisual(FrameworkElement el, string path)
+    /// <summary>Real screen grab when screenX windows are allowed in captures (SCREENX_SHOW_IN_CAPTURE=1), else an offscreen render.</summary>
+    static void SaveScreen(FrameworkElement el, string path, ImageSource background)
+    {
+        if (Environment.GetEnvironmentVariable("SCREENX_SHOW_IN_CAPTURE") == "1") ImageUtil.Save(ScreenCapture.Capture(ScreenCapture.VirtualScreen), path);
+        else SaveVisual(el, path, background);
+    }
+
+    static void SaveVisual(FrameworkElement el, string path, ImageSource? background = null)
     {
         int w = (int)Math.Ceiling(el.ActualWidth), h = (int)Math.Ceiling(el.ActualHeight);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
+        {
+            if (background != null) dc.DrawImage(background, new Rect(0, 0, w, h));
             dc.DrawRectangle(new VisualBrush(el), null, new Rect(0, 0, w, h));
+        }
         var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
         ImageUtil.Save(rtb, path);
