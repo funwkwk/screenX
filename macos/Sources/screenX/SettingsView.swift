@@ -69,7 +69,6 @@ struct SettingsView: View {
             }
             Section("About this app") {
                 LabeledContent("screenX", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-                Link("funwkwk.my.id", destination: URL(string: "https://funwkwk.my.id")!)
                 Link("GitHub", destination: URL(string: "https://github.com/funwkwk/screenX")!)
             }
         }

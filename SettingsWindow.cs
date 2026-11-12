@@ -116,12 +116,57 @@ public sealed class SettingsWindow : Window
         Section("About this app");
         var v = Assembly.GetExecutingAssembly().GetName().Version;
         var about = new StackPanel { Orientation = Orientation.Horizontal };
-        about.Children.Add(Link("funwkwk.my.id", "https://funwkwk.my.id"));
         about.Children.Add(Link("GitHub", "https://github.com/funwkwk/screenX"));
         Card("", $"screenX {v?.Major}.{v?.Minor}.{v?.Build}", "Open-source screen capture, recording, colour picker, text extractor and markup tool. MIT licence.", about);
 
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page, Focusable = false };
+        var scroller = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page, Focusable = false };
+        scroller.Resources.Add(typeof(ScrollBar), SlimScrollBarStyle());
+        Content = scroller;
     }
+
+    /// <summary>Thin rounded scrollbar without arrow buttons, like Windows 11 / Snipping Tool; it widens a little on hover.</summary>
+    static Style SlimScrollBarStyle() => (Style)XamlReader.Parse(
+        """
+        <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="ScrollBar">
+          <Setter Property="Width" Value="12"/>
+          <Setter Property="MinWidth" Value="12"/>
+          <Setter Property="Background" Value="Transparent"/>
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="ScrollBar">
+                <Grid Background="Transparent">
+                  <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="0,4">
+                    <Track.DecreaseRepeatButton>
+                      <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" Opacity="0"/>
+                    </Track.DecreaseRepeatButton>
+                    <Track.IncreaseRepeatButton>
+                      <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" Opacity="0"/>
+                    </Track.IncreaseRepeatButton>
+                    <Track.Thumb>
+                      <Thumb MinHeight="28">
+                        <Thumb.Template>
+                          <ControlTemplate TargetType="Thumb">
+                            <Grid Background="Transparent">
+                              <Border x:Name="Bar" Width="3" CornerRadius="1.5" Background="#9A9A9A" HorizontalAlignment="Right" Margin="0,0,3,0"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                              <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="True">
+                                <Setter TargetName="Bar" Property="Width" Value="6"/>
+                                <Setter TargetName="Bar" Property="CornerRadius" Value="3"/>
+                                <Setter TargetName="Bar" Property="Background" Value="#C5C5C5"/>
+                              </DataTrigger>
+                            </ControlTemplate.Triggers>
+                          </ControlTemplate>
+                        </Thumb.Template>
+                      </Thumb>
+                    </Track.Thumb>
+                  </Track>
+                </Grid>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Style>
+        """);
 
     // =================================================================== building blocks
 
