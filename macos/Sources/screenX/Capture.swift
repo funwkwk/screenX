@@ -2,56 +2,62 @@ import AppKit
 import Vision
 
 enum SnipMode: String, CaseIterable {
-    case rectangle, window, fullscreen
+    case rectangle, window, fullscreen, freeform
 
     var title: String {
         switch self {
         case .rectangle: return "Rectangle"
         case .window: return "Window"
         case .fullscreen: return "Full screen"
+        case .freeform: return "Freeform"
         }
     }
 }
 
-/// Screen grabs through the system `screencapture` tool: it brings the native crosshair / window picker
-/// and macOS asks for the Screen Recording permission on behalf of screenX the first time.
+/// Screen grabs through the system `screencapture` tool; macOS asks for the Screen Recording permission
+/// on behalf of screenX the first time. The snipping overlay (Overlay.swift) works on the frozen grab.
 enum Capture {
-    static var busy = false
+    /// Top-left corner of `screen` in global display coordinates (origin at the top-left of the primary display).
+    private static func origin(of screen: NSScreen) -> NSPoint {
+        let primary = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        return NSPoint(x: screen.frame.minX, y: primary - screen.frame.maxY)
+    }
 
-    /// Takes a snip. `completion` gets nil when the user pressed Esc.
-    static func snip(_ mode: SnipMode, delay: Int = 0, completion: @escaping (NSImage?) -> Void) {
-        if busy { return }
-        busy = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay * 1000 + 250)) {
-            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("screenX-\(UUID().uuidString).png")
-            var args = ["-x", "-t", "png"]
-            switch mode {
-            case .rectangle: args += ["-i"]
-            case .window: args += ["-i", "-W"]
-            case .fullscreen: args += ["-m"]
-            }
-            args.append(tmp.path)
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            p.arguments = args
-            p.terminationHandler = { _ in
-                DispatchQueue.main.async {
-                    busy = false
-                    var image: NSImage?
-                    if let data = try? Data(contentsOf: tmp), let rep = NSBitmapImageRep(data: data) {
-                        let img = NSImage(size: rep.size)
-                        img.addRepresentation(rep)
-                        image = img
-                    }
-                    try? FileManager.default.removeItem(at: tmp)
-                    completion(image)
-                }
-            }
-            do { try p.run() } catch {
-                busy = false
-                completion(nil)
+    /// Still image of one whole screen, without the pointer.
+    static func grab(_ screen: NSScreen, completion: @escaping (CGImage?) -> Void) {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("screenX-\(UUID().uuidString).png")
+        let o = origin(of: screen), f = screen.frame
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", "-t", "png", "-R", "\(Int(o.x)),\(Int(o.y)),\(Int(f.width)),\(Int(f.height))", tmp.path]
+        p.terminationHandler = { _ in
+            DispatchQueue.main.async {
+                var image: CGImage?
+                if let data = try? Data(contentsOf: tmp), let rep = NSBitmapImageRep(data: data) { image = rep.cgImage }
+                try? FileManager.default.removeItem(at: tmp)
+                completion(image)
             }
         }
+        do { try p.run() } catch { completion(nil) }
+    }
+
+    /// On-screen application windows, front to back, in the top-left point coordinates of `screen`.
+    static func windowRects(on screen: NSScreen) -> [NSRect] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        let o = origin(of: screen)
+        let area = NSRect(origin: .zero, size: screen.frame.size)
+        let me = Int(ProcessInfo.processInfo.processIdentifier)
+        var out: [NSRect] = []
+        for w in list {
+            guard (w[kCGWindowLayer as String] as? Int) == 0,
+                  (w[kCGWindowOwnerPID as String] as? Int) != me,
+                  ((w[kCGWindowAlpha as String] as? Double) ?? 1) > 0,
+                  let b = w[kCGWindowBounds as String] as? NSDictionary,
+                  let r = CGRect(dictionaryRepresentation: b) else { continue }
+            let local = r.offsetBy(dx: -o.x, dy: -o.y).intersection(area)
+            if local.width >= 40 && local.height >= 40 { out.append(local) }
+        }
+        return out
     }
 }
 
@@ -72,8 +78,9 @@ enum ImageTools {
               let base = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         rep.size = image.size
         let cg = base.cgContext
-        cg.translateBy(x: 0, y: image.size.height)
-        cg.scaleBy(x: 1, y: -1)
+        // the bitmap context works in pixels: scale to image points (2x on Retina) and flip to a top-left origin
+        cg.translateBy(x: 0, y: CGFloat(px.h))
+        cg.scaleBy(x: CGFloat(px.w) / image.size.width, y: -CGFloat(px.h) / image.size.height)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: true)
         draw(NSRect(origin: .zero, size: image.size))
@@ -163,7 +170,21 @@ enum Toast {
     static var panel: NSPanel?
     static var timer: Timer?
 
-    static func show(_ text: String) {
+    private final class Box: NSView {
+        var onClick: (() -> Void)?
+        override func mouseDown(with event: NSEvent) {
+            guard let action = onClick else { return }
+            Toast.panel?.orderOut(nil)
+            Toast.panel = nil
+            action()
+        }
+        override func resetCursorRects() {
+            if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) }
+        }
+    }
+
+    /// `onClick` makes the message a button (used for "click to edit").
+    static func show(_ text: String, onClick: (() -> Void)? = nil) {
         panel?.orderOut(nil)
         timer?.invalidate()
         let label = NSTextField(wrappingLabelWithString: text)
@@ -179,7 +200,8 @@ enum Toast {
         p.level = .statusBar
         p.hasShadow = true
         p.sharingType = .none
-        let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        let box = Box(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        box.onClick = onClick
         box.wantsLayer = true
         box.layer?.backgroundColor = NSColor(white: 0.13, alpha: 0.96).cgColor
         box.layer?.cornerRadius = 10

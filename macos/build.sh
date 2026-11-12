@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 VERSION="${1:-1.1.0}"
 
 swift build -c release --arch arm64 --arch x86_64
-BIN=".build/apple/Products/Release/screenX"
+BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/screenX"
 
 APP="build/screenX.app"
 rm -rf build
@@ -25,8 +25,17 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"
 
-# ad-hoc signature (no Apple Developer account): Gatekeeper asks once on first open
-codesign --force --deep --sign - "$APP"
+# Sign with a real identity when the Mac has one (SCREENX_SIGN_IDENTITY, else the first Developer ID / Apple
+# Development certificate). macOS ties the Screen Recording permission to the signature: an ad-hoc signature
+# changes on every build, so the permission would have to be granted again each time.
+IDENTITY="${SCREENX_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application|Apple Development/ {print $2; exit}')}"
+if [ -n "$IDENTITY" ] && codesign --force --deep --sign "$IDENTITY" "$APP"; then
+  echo "Signed with: $IDENTITY"
+else
+  # no certificate (for example on CI): ad-hoc, Gatekeeper asks once on first open
+  codesign --force --deep --sign - "$APP"
+  echo "Signed ad-hoc"
+fi
 
 mkdir -p build/dmg
 cp -R "$APP" build/dmg/
