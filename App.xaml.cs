@@ -33,6 +33,19 @@ public partial class App : Application
         base.OnStartup(e);
         var args = e.Args.Select(a => a.ToLowerInvariant()).ToArray();
 
+        if (args.Contains("--uninstall"))
+        {
+            Installer.Uninstall();
+            Shutdown();
+            return;
+        }
+        if (Installer.IsSetupRun(args))
+        {
+            ShutdownMode = ShutdownMode.OnLastWindowClose;
+            new InstallerWindow().Show();
+            return;
+        }
+
         if (args.Length >= 2 && args[0] == "--selftest")
         {
             _ = SelfTest.RunAsync(args[1]).ContinueWith(_ => Dispatcher.Invoke(Shutdown));
@@ -63,6 +76,20 @@ public partial class App : Application
             return;
         }
 
+        if (args.Length >= 2 && args[0] == "--open" && File.Exists(e.Args[1]))
+        {
+            // Open an image file in the editor window (standalone, no tray / hotkey).
+            var img = new BitmapImage();
+            img.BeginInit();
+            img.CacheOption = BitmapCacheOption.OnLoad;
+            img.UriSource = new Uri(Path.GetFullPath(e.Args[1]));
+            img.EndInit();
+            img.Freeze();
+            ShutdownMode = ShutdownMode.OnLastWindowClose;
+            new EditorWindow(img, Path.GetFullPath(e.Args[1])).Show();
+            return;
+        }
+
         mutex = new Mutex(true, MutexName, out bool first);
         CaptureMode? requested = Commands.Where(c => args.Contains(c.Arg)).Select(c => (CaptureMode?)c.Mode).FirstOrDefault();
 
@@ -82,9 +109,8 @@ public partial class App : Application
         };
 
         tray = new Tray(this);
-        hotkeys = new HotkeyManager();
-        // Ctrl+Shift+S opens screenX; Windows keeps its own Win+Shift+S Snipping Tool.
-        bool hotkeyOk = hotkeys.Register(Native.MOD_CONTROL | Native.MOD_SHIFT, 'S', () => StartCapture(Settings.Current.LastSnipMode));
+        ApplyHotkeys();
+        bool hotkeyOk = mainHotkeyOk;
         ListenForOtherInstances();
 
         if (!hotkeyOk)
@@ -93,6 +119,20 @@ public partial class App : Application
         if (requested is { } m) StartCapture(m);
         else if (hotkeyOk && !args.Contains("--background"))
             tray.Balloon("screenX is running", "Press Ctrl+Shift+S to snip, record the screen, pick a colour or extract text.");
+    }
+
+    bool mainHotkeyOk;
+
+    /// <summary>(Re)register the global hotkeys from the settings. Returns false when Print Screen was wanted but is taken.</summary>
+    public bool ApplyHotkeys()
+    {
+        hotkeys?.Dispose();
+        hotkeys = new HotkeyManager();
+        // Ctrl+Shift+S opens screenX; Windows keeps its own Win+Shift+S Snipping Tool.
+        mainHotkeyOk = hotkeys.Register(Native.MOD_CONTROL | Native.MOD_SHIFT, 'S', () => StartCapture(Settings.Current.LastSnipMode));
+        if (!Settings.Current.UsePrintScreen) return true;
+        const uint VK_SNAPSHOT = 0x2C;
+        return hotkeys.Register(0, VK_SNAPSHOT, () => StartCapture(Settings.Current.LastSnipMode));
     }
 
     static string EventName(CaptureMode mode) => $@"Local\screenX.Activate.{(int)mode}";
@@ -136,10 +176,41 @@ public partial class App : Application
             var shot = ScreenCapture.Capture(vs);
             overlay = new OverlayWindow(shot, vs, windows, mode);
             overlay.Completed += OnOverlayCompleted;
-            overlay.Closed += (_, _) => overlay = null;
+            overlay.Closed += (_, _) =>
+            {
+                overlay = null;
+                // Completed runs right after Close; if it did not take the waiting editor, bring the editor back.
+                Dispatcher.BeginInvoke(RestorePendingEditor, DispatcherPriority.Background);
+            };
             overlay.ShowPinned();
         }
-        finally { capturing = false; }
+        finally
+        {
+            capturing = false;
+            if (overlay == null) RestorePendingEditor();
+        }
+    }
+
+    /// <summary>Editor window that pressed "New": the next snip is shown in it instead of a toast.</summary>
+    EditorWindow? pendingEditor;
+
+    public void OpenEditor() => new EditorWindow(null, null).Show();
+
+    public async void NewFromEditor(EditorWindow editor, bool video)
+    {
+        if (recorder != null || overlay != null || capturing || pendingEditor != null) return;
+        pendingEditor = editor;
+        editor.WindowState = WindowState.Minimized;
+        int delay = video ? 0 : Math.Clamp(Settings.Current.SnipDelay, 0, 30);
+        await Task.Delay(350 + delay * 1000); // let the minimize animation finish before grabbing the screen
+        StartCapture(video ? CaptureMode.Record : Settings.Current.LastSnipMode);
+    }
+
+    void RestorePendingEditor()
+    {
+        var ed = pendingEditor;
+        pendingEditor = null;
+        if (ed != null && ed.IsLoaded) ed.RestoreAndActivate();
     }
 
     async void OnOverlayCompleted(OverlayResult r)
@@ -154,7 +225,26 @@ public partial class App : Application
                         Settings.Current.LastSnipMode = r.Mode;
                         Settings.Current.Save();
                     }
-                    await HandleSnipAction(r.Image!, r.Action);
+                    var snip = Settings.Current.AddBorder ? ImageUtil.WithBorder(r.Image!) : r.Image!;
+                    if (r.Action == SnipAction.Capture && pendingEditor is { IsLoaded: true } ed)
+                    {
+                        pendingEditor = null;
+                        ClipboardUtil.SetImage(snip);
+                        string? path = null;
+                        if (Settings.Current.AutoSave) try { path = ImageUtil.AutoSave(snip); } catch { }
+                        if (Settings.Current.MultipleWindows && ed.HasImage)
+                        {
+                            ed.RestoreAndActivate();
+                            new EditorWindow(snip, path).Show();
+                        }
+                        else
+                        {
+                            ed.LoadImage(snip, path);
+                            ed.RestoreAndActivate();
+                        }
+                        break;
+                    }
+                    await HandleSnipAction(snip, r.Action);
                     break;
                 case CaptureMode.Text:
                     await HandleText(r.Image!);
@@ -163,6 +253,7 @@ public partial class App : Application
                     HandleColor(r.Color);
                     break;
                 case CaptureMode.Record:
+                    pendingEditor = null; // the editor stays minimised while recording
                     recorder = new RecordingController(r.Region);
                     recorder.Ended += () => recorder = null;
                     recorder.Show();
