@@ -117,7 +117,7 @@ public sealed class SettingsWindow : Window
         var v = Assembly.GetExecutingAssembly().GetName().Version;
         var about = new StackPanel { Orientation = Orientation.Horizontal };
         about.Children.Add(Link("GitHub", "https://github.com/funwkwk/screenX"));
-        Card("", $"screenX {v?.Major}.{v?.Minor}.{v?.Build}", "Open-source screen capture, recording, colour picker, text extractor and markup tool. MIT licence.", about);
+        Card("", $"screenX {v?.Major}.{v?.Minor}.{v?.Build}", "Open-source screen capture, recording, colour picker, text extractor and markup tool. GPL-3.0 licence.", about);
 
         var scroller = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page, Focusable = false };
         scroller.Resources.Add(typeof(ScrollBar), SlimScrollBarStyle());

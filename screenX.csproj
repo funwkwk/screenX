@@ -20,7 +20,7 @@
     <Copyright>Copyright (c) 2026 funwkwk (https://funwkwk.my.id)</Copyright>
     <PackageProjectUrl>https://funwkwk.my.id</PackageProjectUrl>
     <Description>screenX - open-source screen capture, recording, colour picker, OCR and markup tool.</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/funwkwk/screenX</RepositoryUrl>
     <NoWarn>$(NoWarn);CA1416;WFO0003</NoWarn>
   </PropertyGroup>
