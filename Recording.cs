@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using NAudio.CoreAudioApi;
@@ -124,6 +125,7 @@ public sealed class RecordingSession
         running = false;
         paused = false;
         await Task.Run(() => thread.Join());
+        active.Stop(); // the clock (shared with the audio tracks) ends where the video ends
         ReleasePeriod();
         try { ff.StandardInput.Close(); } catch { }
         await ff.WaitForExitAsync();
@@ -144,35 +146,57 @@ public sealed class RecordingSession
 
 /// <summary>
 /// Records the microphone or the system output (WASAPI loopback) to a WAV file that stays in step with the
-/// video clock: silence is inserted when the device delivers nothing (loopback is silent when nothing plays)
-/// and audio is dropped while the recording is paused.
+/// video clock: silence is inserted when the device delivers nothing (loopback is silent when nothing plays),
+/// audio that runs ahead of the clock (device clock drift) is dropped, and nothing is kept while the recording
+/// is paused.
 /// </summary>
 public sealed class AudioTrack
 {
-    readonly IWaveIn cap;
+    readonly WasapiCapture cap;
     readonly WaveFileWriter writer;
     readonly WaveFormat fmt;
     readonly Func<TimeSpan> clock;
     readonly Func<bool> paused;
-    readonly ManualResetEventSlim stopped = new();
     readonly object gate = new();
     long written;
-    bool closed;
+    bool closed, stoppedOnce;
 
     public string Path { get; }
+    public bool Loopback { get; }
+    /// <summary>Set when the device failed while recording (e.g. unplugged); the rest of the track is silence.</summary>
+    public string? Error { get; private set; }
+    /// <summary>"System audio" or "Microphone", for messages.</summary>
+    public string Name => Loopback ? "System audio" : "Microphone";
 
     public AudioTrack(bool loopback, string path, Func<TimeSpan> clock, Func<bool> paused)
     {
         Path = path;
+        Loopback = loopback;
         this.clock = clock;
         this.paused = paused;
-        cap = loopback ? new WasapiLoopbackCapture() : new WasapiCapture(new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console));
-        fmt = cap.WaveFormat;
-        writer = new WaveFileWriter(path, fmt);
+        if (loopback) cap = new WasapiLoopbackCapture();
+        else
+        {
+            using var devices = new MMDeviceEnumerator();
+            if (!devices.HasDefaultAudioEndpoint(DataFlow.Capture, Role.Console))
+                throw new InvalidOperationException("no microphone was found.");
+            cap = new WasapiCapture(devices.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console));
+        }
+        try
+        {
+            fmt = cap.WaveFormat;
+            writer = new WaveFileWriter(path, fmt);
+        }
+        catch
+        {
+            cap.Dispose();
+            throw;
+        }
         cap.DataAvailable += OnData;
-        cap.RecordingStopped += (_, _) => stopped.Set();
+        cap.RecordingStopped += (_, e) => { if (e.Exception != null) Error = e.Exception.Message; };
     }
 
+    /// <summary>Starts capturing; throws when the device cannot be opened (e.g. microphone access is blocked).</summary>
     public void Start() => cap.StartRecording();
 
     long Expected()
@@ -199,25 +223,62 @@ public sealed class AudioTrack
         lock (gate)
         {
             if (closed || paused() || e.BytesRecorded == 0) return;
-            long gap = Expected() - written - e.BytesRecorded;
-            if (gap > fmt.AverageBytesPerSecond / 10) Silence(gap);
-            writer.Write(e.Buffer, 0, e.BytesRecorded);
-            written += e.BytesRecorded;
+            long expected = Expected();
+            int offset = 0, count = e.BytesRecorded - e.BytesRecorded % fmt.BlockAlign;
+            // Behind the clock (loopback delivered nothing while it was quiet, or the track just started): fill with
+            // silence so this buffer ends "now". Small gaps are left alone so steady input is not chopped up.
+            long gap = expected - written - count;
+            if (gap > 0 && (written == 0 || gap > fmt.AverageBytesPerSecond / 10)) Silence(gap);
+            // Ahead of the clock (the device runs slightly fast): drop the oldest part of the buffer.
+            long ahead = written + count - expected;
+            if (ahead > fmt.AverageBytesPerSecond / 10)
+            {
+                int drop = (int)Math.Min(count, ahead - ahead % fmt.BlockAlign);
+                offset += drop;
+                count -= drop;
+            }
+            if (count <= 0) return;
+            writer.Write(e.Buffer, offset, count);
+            written += count;
         }
     }
 
+    /// <summary>Stops capturing and pads the file with silence up to the clock. Safe to call more than once.</summary>
     public void Stop()
     {
-        try { cap.StopRecording(); stopped.Wait(2000); } catch { }
         lock (gate)
         {
-            if (closed) return;
-            long gap = Expected() - written;
-            if (gap > 0) Silence(gap);
-            closed = true;
-            writer.Dispose();
+            if (stoppedOnce) return;
+            stoppedOnce = true;
         }
-        cap.Dispose();
+        try
+        {
+            cap.StopRecording();
+            // Wait for the capture thread itself (not RecordingStopped, which is posted to the UI thread).
+            SpinWait.SpinUntil(() => cap.CaptureState == CaptureState.Stopped, 2000);
+        }
+        catch { }
+        lock (gate)
+        {
+            if (!closed)
+            {
+                long gap = Expected() - written;
+                if (gap > 0) Silence(gap);
+                closed = true;
+                try { writer.Dispose(); } catch { }
+            }
+        }
+        try { cap.Dispose(); } catch { }
+    }
+
+    /// <summary>Friendly text for a device that could not be opened.</summary>
+    public static string Describe(bool loopback, Exception ex)
+    {
+        bool denied = ex is UnauthorizedAccessException || (ex is COMException c && (uint)c.HResult == 0x80070005);
+        if (denied)
+            return loopback ? "System audio: access was denied."
+                : "Microphone: access is blocked. Turn it on in Windows Settings > Privacy & security > Microphone.";
+        return (loopback ? "System audio: " : "Microphone: ") + ex.Message;
     }
 }
 
@@ -245,8 +306,61 @@ public sealed class RecordRegionWindow : Window
     Int32Rect dragStartRect;
     (int X, int Y) dragStartPt;
     bool recording;
+    bool locked;
+    readonly Grid badge = new() { Width = 150, Height = 150, IsHitTestVisible = false, Visibility = Visibility.Collapsed, RenderTransformOrigin = new Point(0.5, 0.5) };
+    readonly TextBlock badgeText = new()
+    {
+        Foreground = Brushes.White, FontSize = 72, FontWeight = FontWeights.SemiBold,
+        FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI"),
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 8)
+    };
+    readonly ScaleTransform badgeScale = new(1, 1);
 
     public Int32Rect Region => region;
+
+    /// <summary>While locked (countdown) the area keeps its look but cannot be moved, resized or redrawn.</summary>
+    public bool Locked
+    {
+        get => locked;
+        set
+        {
+            locked = value;
+            root.Cursor = value ? Cursors.Arrow : Cursors.Cross;
+            mover.Cursor = value ? Cursors.Arrow : Cursors.SizeAll;
+            foreach (var (h, _) in handles) h.IsHitTestVisible = !value;
+        }
+    }
+
+    /// <summary>
+    /// Shows <paramref name="n"/> in a dark badge in the middle of the area: it scales 1.3 → 1 and fades in over
+    /// 250 ms, then fades out during the last 150 ms of its second.
+    /// </summary>
+    public void ShowCountdown(int n)
+    {
+        var r = ToDip(region);
+        Canvas.SetLeft(badge, r.X + r.Width / 2 - badge.Width / 2);
+        Canvas.SetTop(badge, r.Y + r.Height / 2 - badge.Height / 2);
+        badgeText.Text = n.ToString();
+        badge.Visibility = Visibility.Visible;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var scale = new DoubleAnimation(1.3, 1.0, TimeSpan.FromMilliseconds(250)) { EasingFunction = ease };
+        badgeScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
+        badgeScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
+        var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1000) };
+        fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        fade.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(250)), ease));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(850))));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1000))));
+        badge.BeginAnimation(OpacityProperty, fade);
+    }
+
+    public void HideCountdown()
+    {
+        badge.BeginAnimation(OpacityProperty, null);
+        badgeScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        badgeScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        badge.Visibility = Visibility.Collapsed;
+    }
     public event Action? RegionChanged, StartRequested, CancelRequested;
 
     public RecordRegionWindow(Int32Rect virtualScreen, Int32Rect region)
@@ -263,6 +377,14 @@ public sealed class RecordRegionWindow : Window
         root.Children.Add(mover);
         root.Children.Add(outline);
         BuildHandles();
+        badge.RenderTransform = badgeScale;
+        badge.Children.Add(new Ellipse
+        {
+            Fill = new SolidColorBrush(Color.FromArgb(0x99, 0, 0, 0)),
+            Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), StrokeThickness = 1
+        });
+        badge.Children.Add(badgeText);
+        root.Children.Add(badge);
         Content = root;
 
         root.MouseLeftButtonDown += (_, e) => Begin(e, Drag.New, Edge.None);
@@ -342,7 +464,7 @@ public sealed class RecordRegionWindow : Window
 
     void Begin(MouseButtonEventArgs e, Drag kind, Edge edges)
     {
-        if (recording || drag != Drag.None) return;
+        if (recording || locked || drag != Drag.None) return;
         drag = kind;
         dragEdges = edges;
         dragStartRect = region;
@@ -474,6 +596,7 @@ public sealed class RecordingBar : Window
         Margin = new Thickness(12, 0, 10, 0), FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI")
     };
     Button? startBtn, pauseBtn;
+    bool countingDown;
     readonly Button micBtn, audioBtn;
 
     public event Action? StartClicked, StopClicked, DiscardClicked, CancelClicked, PauseClicked;
@@ -503,6 +626,7 @@ public sealed class RecordingBar : Window
 
         KeyDown += (_, e) =>
         {
+            if (countingDown && e.Key == Key.Escape) { CancelClicked?.Invoke(); return; }
             if (startBtn == null) return;
             if (e.Key == Key.Escape) CancelClicked?.Invoke();
             else if (e.Key == Key.Enter && startBtn.IsEnabled) StartClicked?.Invoke();
@@ -585,9 +709,11 @@ public sealed class RecordingBar : Window
         VerticalAlignment = VerticalAlignment.Center
     };
 
-    void ShowIdle()
+    public void ShowIdle()
     {
+        countingDown = false;
         row.Children.Clear();
+        micBtn.IsEnabled = audioBtn.IsEnabled = true;
         startBtn = new Button { Content = StartContent("Start"), Height = 38, MinWidth = 120, Cursor = Cursors.Arrow, Template = StartTemplate(), Margin = new Thickness(0, 0, 4, 0), ToolTip = "Start recording (Enter)" };
         System.Windows.Automation.AutomationProperties.SetName(startBtn, "Start");
         startBtn.Click += (_, _) => StartClicked?.Invoke();
@@ -603,16 +729,27 @@ public sealed class RecordingBar : Window
         RefreshAudio();
     }
 
+    /// <summary>Countdown look: only "Starting in n…" and a Cancel button (Esc).</summary>
     public void ShowCountdown(int n)
     {
-        if (startBtn == null) return;
-        startBtn.IsEnabled = false;
-        startBtn.Content = StartContent($"Starting in {n}");
-        micBtn.IsEnabled = audioBtn.IsEnabled = false;
+        if (!countingDown)
+        {
+            countingDown = true;
+            row.Children.Clear();
+            startBtn = null;
+            timeText.Opacity = 1;
+            var cancel = IconButton("\uE711", "Cancel countdown (Esc)");
+            cancel.Click += (_, _) => CancelClicked?.Invoke();
+            row.Children.Add(timeText);
+            row.Children.Add(Divider());
+            row.Children.Add(cancel);
+        }
+        timeText.Text = $"Starting in {n}…";
     }
 
     public void ShowRecording()
     {
+        countingDown = false;
         row.Children.Clear();
         startBtn = null;
         pauseBtn = IconButton("", "Pause");
@@ -700,10 +837,10 @@ public sealed class RecordingController
         bar = new RecordingBar();
         layer.RegionChanged += () => bar.Place(layer.Region);
         layer.StartRequested += () => _ = StartAsync();
-        layer.CancelRequested += End;
+        layer.CancelRequested += CancelOrEnd;
         bar.Loaded += (_, _) => bar.Place(layer.Region);
         bar.StartClicked += () => _ = StartAsync();
-        bar.CancelClicked += End;
+        bar.CancelClicked += CancelOrEnd;
         bar.PauseClicked += () =>
         {
             if (session == null) return;
@@ -726,6 +863,53 @@ public sealed class RecordingController
     }
 
     bool starting;
+    CancellationTokenSource? countdown;
+
+    /// <summary>Esc / ✕: during the countdown go back to the ready state, otherwise close the recorder.</summary>
+    void CancelOrEnd()
+    {
+        if (countdown != null) countdown.Cancel();
+        else if (session == null && !starting) End();
+    }
+
+    /// <summary>
+    /// Counts down from <paramref name="seconds"/> on a fixed schedule (no drift from slow ticks). Returns false
+    /// when cancelled (Esc / ✕ / the recorder was closed).
+    /// </summary>
+    async Task<bool> CountdownAsync(int seconds)
+    {
+        using var cts = countdown = new CancellationTokenSource();
+        layer.Locked = true;
+        var clock = Stopwatch.StartNew();
+        try
+        {
+            for (int n = seconds; n >= 1; n--)
+            {
+                bar.ShowCountdown(n);
+                if (n == seconds) _ = bar.Dispatcher.BeginInvoke(() => bar.Place(layer.Region), DispatcherPriority.Loaded);
+                layer.ShowCountdown(n);
+                int due = (seconds - n + 1) * 1000 - (int)clock.ElapsedMilliseconds;
+                if (due > 0) await Task.Delay(due, cts.Token);
+                if (ending) return false;
+            }
+            return true;
+        }
+        catch (OperationCanceledException) { return false; }
+        finally
+        {
+            countdown = null;
+            layer.HideCountdown();
+            if (!ending)
+            {
+                layer.Locked = false;
+                if (cts.IsCancellationRequested)
+                {
+                    bar.ShowIdle();
+                    _ = bar.Dispatcher.BeginInvoke(() => bar.Place(layer.Region), DispatcherPriority.Loaded);
+                }
+            }
+        }
+    }
 
     async Task StartAsync()
     {
@@ -739,13 +923,17 @@ public sealed class RecordingController
             End();
             return;
         }
-        layer.SetRecording();
-        for (int i = 3; i >= 1; i--)
+        int wait = Math.Clamp(Settings.Current.RecordCountdown, 0, 10);
+        if (wait > 0 && !await CountdownAsync(wait))
         {
-            bar.ShowCountdown(i);
-            await Task.Delay(1000);
-            if (ending) return;
+            starting = false; // cancelled: back to the ready state (or the recorder was closed)
+            return;
         }
+        // Remove the countdown badge and the dimming, then give DWM a frame or two so neither is in the video.
+        layer.SetRecording();
+        await layer.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        await Task.Delay(100);
+        if (ending) return;
 
         // H.264 / yuv420p needs even dimensions.
         var sel = layer.Region;
@@ -765,14 +953,25 @@ public sealed class RecordingController
             {
                 if (!on) continue;
                 try { tracks.Add(new AudioTrack(loop, Path.Combine(tmp, name + ".wav"), () => s.Elapsed, () => s.Paused)); }
-                catch (Exception ex) { problems.Add((loop ? "System audio: " : "Microphone: ") + ex.Message); }
+                catch (Exception ex) { problems.Add(AudioTrack.Describe(loop, ex)); }
             }
             session.Start();
-            foreach (var t in tracks) t.Start();
+            // A device that cannot be opened (missing, in use exclusively, access blocked) only drops that source.
+            foreach (var t in tracks.ToArray())
+            {
+                try { t.Start(); }
+                catch (Exception ex)
+                {
+                    problems.Add(AudioTrack.Describe(t.Loopback, ex));
+                    tracks.Remove(t);
+                    try { t.Stop(); } catch { }
+                    try { File.Delete(t.Path); } catch { }
+                }
+            }
             bar.ShowRecording();
             ticker.Start();
             if (problems.Count > 0)
-                Toast.Notify("Recording without some audio", string.Join("\n", problems));
+                Toast.Notify(tracks.Count == 0 ? "Recording without sound" : "Recording without some audio", string.Join("\n", problems));
         }
         catch (Exception ex)
         {
@@ -798,8 +997,10 @@ public sealed class RecordingController
         string output = finalPath!;
         try
         {
+            // Stop the audio together with the video so both end at the same point of the shared clock.
+            var audioStopped = Task.Run(() => { foreach (var t in tracks) t.Stop(); });
             await s.StopAsync();
-            foreach (var t in tracks) await Task.Run(t.Stop);
+            await audioStopped;
 
             if (!keep)
             {
@@ -817,8 +1018,12 @@ public sealed class RecordingController
                     File.Move(s.OutputPath, output, true);
                     warning = "The audio could not be added; the video was saved without sound.";
                 }
-                Cleanup(s.OutputPath, output);
+                else if (tracks.Find(t => t.Error != null) is { } failed)
+                    warning = $"{failed.Name} stopped during the recording: {failed.Error}";
             }
+            else if (s.OutputPath != output)
+                File.Move(s.OutputPath, output, true); // every audio source failed to start: keep the silent video
+            Cleanup(s.OutputPath, output);
             End();
             ClipboardUtil.SetFile(output);
             Toast.Notify("Screen recording saved", Path.GetFileName(output) + "\n" + (warning ?? "The video file is copied to your clipboard."),
@@ -836,26 +1041,29 @@ public sealed class RecordingController
 
     void Cleanup(string videoPath, string output)
     {
-        if (tracks.Count == 0) return;
         foreach (var t in tracks) try { File.Delete(t.Path); } catch { }
-        if (videoPath != output) try { File.Delete(videoPath); } catch { }
+        if (videoPath == output) return; // no temp folder was used
+        try { File.Delete(videoPath); } catch { }
         try { Directory.Delete(Path.GetDirectoryName(videoPath)!, false); } catch { }
     }
 
-    /// <summary>Add the WAV tracks to the video (mixed when there are two) without re-encoding the video.</summary>
+    /// <summary>
+    /// Add the WAV tracks to the video without re-encoding the video: one AAC track, 48 kHz stereo (a mono mic is
+    /// spread to both sides, surround loopback is folded down; two sources are mixed). The audio is padded and cut
+    /// to the video length.
+    /// </summary>
     static async Task<bool> MuxAsync(string ffmpeg, string video, List<AudioTrack> audio, string output)
     {
+        const string Conform = "aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
         foreach (bool normalizeOpt in new[] { true, false }) // amix's normalize option needs ffmpeg 4.4+
         {
             var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y", "-i", video };
             foreach (var t in audio) { args.Add("-i"); args.Add(t.Path); }
-            if (audio.Count == 1)
-                args.AddRange(new[] { "-map", "0:v", "-map", "1:a" });
-            else
-            {
-                string mix = $"[1:a][2:a]amix=inputs=2:duration=longest:dropout_transition=0{(normalizeOpt ? ":normalize=0" : "")}[a]";
-                args.AddRange(new[] { "-filter_complex", mix, "-map", "0:v", "-map", "[a]" });
-            }
+            string graph = audio.Count == 1
+                ? $"[1:a]{Conform},apad[a]"
+                : $"[1:a]{Conform}[a1];[2:a]{Conform}[a2];" +
+                  $"[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0{(normalizeOpt ? ":normalize=0" : "")},apad[a]";
+            args.AddRange(new[] { "-filter_complex", graph, "-map", "0:v", "-map", "[a]" });
             args.AddRange(new[] { "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", output });
 
             var psi = new ProcessStartInfo(ffmpeg) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
@@ -873,6 +1081,7 @@ public sealed class RecordingController
     void End()
     {
         ending = true;
+        countdown?.Cancel();
         ticker.Stop();
         session?.Kill();
         foreach (var t in tracks) try { t.Stop(); } catch { }

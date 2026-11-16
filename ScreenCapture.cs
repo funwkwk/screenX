@@ -105,3 +105,48 @@ public sealed class GdiCapturer : IDisposable
         Native.ReleaseDC(IntPtr.Zero, screenDc);
     }
 }
+
+/// <summary>
+/// The camera-shutter click played when a still snip is taken. The WAV is embedded in the exe ("shutter.wav"),
+/// loaded into memory once and played asynchronously (PlaySound SND_ASYNC), so it never blocks the UI.
+/// </summary>
+public static class ShutterSound
+{
+    static System.Media.SoundPlayer? player;
+    static bool tried;
+
+    /// <summary>True when the embedded WAV resource is present (used by the self-test).</summary>
+    public static bool ResourcePresent
+    {
+        get
+        {
+            using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("shutter.wav");
+            return s != null && s.Length > 44;
+        }
+    }
+
+    /// <summary>Load the sound ahead of time so the first snip does not wait for it.</summary>
+    public static void Preload()
+    {
+        if (tried) return;
+        tried = true;
+        try
+        {
+            using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("shutter.wav");
+            if (s == null) return;
+            var ms = new System.IO.MemoryStream();
+            s.CopyTo(ms);
+            ms.Position = 0;
+            var p = new System.Media.SoundPlayer(ms);
+            p.Load(); // reads the whole stream into the player's buffer now
+            player = p;
+        }
+        catch { player = null; }
+    }
+
+    public static void Play()
+    {
+        Preload();
+        try { player?.Play(); } catch { }
+    }
+}

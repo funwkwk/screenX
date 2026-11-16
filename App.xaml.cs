@@ -109,30 +109,69 @@ public partial class App : Application
         };
 
         tray = new Tray(this);
-        ApplyHotkeys();
-        bool hotkeyOk = mainHotkeyOk;
+        ShutterSound.Preload();
+        var hk = ApplyHotkeys();
         ListenForOtherInstances();
 
-        if (!hotkeyOk)
-            tray.Balloon("Ctrl+Shift+S is already used by another app",
-                "Close that app and restart screenX, or open screenX from the tray icon.");
+        var taken = new List<string>();
+        if (!hk.Snip) taken.Add(Settings.Current.SnipHotkey);
+        if (!hk.Record) taken.Add(Settings.Current.RecordHotkey);
+        if (taken.Count > 0)
+            tray.Balloon($"{string.Join(" and ", taken)} {(taken.Count > 1 ? "are" : "is")} already used by another app",
+                "Pick another shortcut in screenX Settings, or open screenX from the tray icon.");
         if (requested is { } m) StartCapture(m);
-        else if (hotkeyOk && !args.Contains("--background"))
-            tray.Balloon("screenX is running", "Press Ctrl+Shift+S to snip, record the screen, pick a colour or extract text.");
+        else if (taken.Count == 0 && !args.Contains("--background"))
+            tray.Balloon("screenX is running", Settings.Current.SnipHotkeyHint(
+                "Press {0} to snip, record the screen, pick a colour or extract text.",
+                "Click the tray icon to snip, record the screen, pick a colour or extract text."));
     }
 
-    bool mainHotkeyOk;
+    public enum HotkeyAction { Snip, Record }
 
-    /// <summary>(Re)register the global hotkeys from the settings. Returns false when Print Screen was wanted but is taken.</summary>
-    public bool ApplyHotkeys()
+    /// <summary>Which wanted hotkeys could be registered (true also when that hotkey is switched off).</summary>
+    public readonly record struct HotkeyStatus(bool Snip, bool Record, bool PrintScreen);
+
+    /// <summary>(Re)register the global hotkeys from the settings.</summary>
+    public HotkeyStatus ApplyHotkeys()
     {
-        hotkeys?.Dispose();
-        hotkeys = new HotkeyManager();
-        // Ctrl+Shift+S opens screenX; Windows keeps its own Win+Shift+S Snipping Tool.
-        mainHotkeyOk = hotkeys.Register(Native.MOD_CONTROL | Native.MOD_SHIFT, 'S', () => StartCapture(Settings.Current.LastSnipMode));
-        if (!Settings.Current.UsePrintScreen) return true;
-        const uint VK_SNAPSHOT = 0x2C;
-        return hotkeys.Register(0, VK_SNAPSHOT, () => StartCapture(Settings.Current.LastSnipMode));
+        hotkeys ??= new HotkeyManager();
+        hotkeys.UnregisterAll();
+        var s = Settings.Current;
+        // The snip shortcut (Ctrl+Shift+S by default) opens screenX; Windows keeps its own Win+Shift+S Snipping Tool.
+        bool snip = Register(s.SnipHotkey, () => StartCapture(Settings.Current.LastSnipMode));
+        bool record = Register(s.RecordHotkey, () => StartCapture(CaptureMode.Record));
+        bool prt = !s.UsePrintScreen || hotkeys.Register(0, Hotkey.VK_SNAPSHOT, () => StartCapture(Settings.Current.LastSnipMode)) != 0;
+        return new HotkeyStatus(snip, record, prt);
+    }
+
+    bool Register(string combo, Action action) =>
+        !Hotkey.TryParse(combo, out var hk) || hotkeys!.Register(hk, action) != 0;
+
+    /// <summary>Stop listening to the global hotkeys (while the settings record a new shortcut).</summary>
+    public void SuspendHotkeys() => hotkeys?.UnregisterAll();
+
+    /// <summary>
+    /// Switch one global shortcut to <paramref name="combo"/> ("" = none) and save it. When the new combination
+    /// cannot be registered the previous one is kept and false is returned.
+    /// </summary>
+    public bool ChangeHotkey(HotkeyAction action, string combo)
+    {
+        var s = Settings.Current;
+        combo = Hotkey.Normalize(combo);
+        string prev = action == HotkeyAction.Snip ? s.SnipHotkey : s.RecordHotkey;
+        void Set(string v) { if (action == HotkeyAction.Snip) s.SnipHotkey = v; else s.RecordHotkey = v; }
+
+        Set(combo);
+        var st = ApplyHotkeys();
+        bool ok = action == HotkeyAction.Snip ? st.Snip : st.Record;
+        if (!ok)
+        {
+            Set(prev);
+            ApplyHotkeys();
+        }
+        s.Save();
+        tray?.RefreshShortcuts();
+        return ok;
     }
 
     static string EventName(CaptureMode mode) => $@"Local\screenX.Activate.{(int)mode}";
@@ -220,6 +259,8 @@ public partial class App : Application
             switch (r.Mode)
             {
                 case CaptureMode.Rectangle or CaptureMode.Freeform or CaptureMode.Window or CaptureMode.Fullscreen:
+                    // The screen was grabbed before the overlay opened, so the sound is never part of the picture.
+                    if (Settings.Current.PlaySnipSound) ShutterSound.Play();
                     if (r.Mode != CaptureMode.Fullscreen && Settings.Current.LastSnipMode != r.Mode)
                     {
                         Settings.Current.LastSnipMode = r.Mode;

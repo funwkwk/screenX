@@ -12,6 +12,7 @@ public sealed class Tray : IDisposable
 {
     readonly NotifyIcon icon;
     readonly App app;
+    ToolStripMenuItem? snipItem, recordItem;
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     public Tray(App app)
@@ -20,11 +21,21 @@ public sealed class Tray : IDisposable
         icon = new NotifyIcon
         {
             Icon = LoadIcon(SystemInformation.SmallIconSize),
-            Text = "screenX — Ctrl+Shift+S",
             Visible = true,
             ContextMenuStrip = BuildMenu()
         };
-        icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) app.StartCapture(Settings.Current.LastSnipMode); };    }
+        icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) app.StartCapture(Settings.Current.LastSnipMode); };
+        RefreshShortcuts();
+    }
+
+    /// <summary>Show the current global shortcuts in the tooltip and the menu.</summary>
+    public void RefreshShortcuts()
+    {
+        var s = Settings.Current;
+        icon.Text = string.IsNullOrEmpty(s.SnipHotkey) ? "screenX" : "screenX — " + s.SnipHotkey;
+        if (snipItem != null) snipItem.ShortcutKeyDisplayString = s.SnipHotkey;
+        if (recordItem != null) recordItem.ShortcutKeyDisplayString = s.RecordHotkey;
+    }
 
     public static Icon LoadIcon(Size size)
     {
@@ -38,9 +49,9 @@ public sealed class Tray : IDisposable
         var s = Settings.Current;
 
         m.Items.Add(new ToolStripMenuItem("Open screenX", null, (_, _) => app.OpenEditor()));
-        m.Items.Add(new ToolStripMenuItem("New snip", null, (_, _) => app.StartCapture(s.LastSnipMode)) { ShortcutKeyDisplayString = "Ctrl+Shift+S", Font = new Font(m.Font, FontStyle.Bold) });
+        m.Items.Add(snipItem = new ToolStripMenuItem("New snip", null, (_, _) => app.StartCapture(s.LastSnipMode)) { Font = new Font(m.Font, FontStyle.Bold) });
         m.Items.Add(new ToolStripMenuItem("Full screen snip", null, (_, _) => app.StartCapture(CaptureMode.Fullscreen)));
-        m.Items.Add(new ToolStripMenuItem("Screen record", null, (_, _) => app.StartCapture(CaptureMode.Record)));
+        m.Items.Add(recordItem = new ToolStripMenuItem("Screen record", null, (_, _) => app.StartCapture(CaptureMode.Record)));
         m.Items.Add(new ToolStripMenuItem("Color picker", null, (_, _) => app.StartCapture(CaptureMode.ColorPicker)));
         m.Items.Add(new ToolStripMenuItem("Text extractor", null, (_, _) => app.StartCapture(CaptureMode.Text)));
         m.Items.Add(new ToolStripSeparator());

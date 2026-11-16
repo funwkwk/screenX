@@ -21,6 +21,12 @@ public sealed class Settings
     public double BorderSize { get; set; } = 2;
     /// <summary>Also open screenX with the Print Screen key.</summary>
     public bool UsePrintScreen { get; set; } = false;
+    /// <summary>Global shortcut that opens a new snip, e.g. "Ctrl+Shift+S"; "" = none.</summary>
+    public string SnipHotkey { get; set; } = Hotkey.DefaultSnip;
+    /// <summary>Global shortcut that starts (or stops) a screen recording; "" = none (the default).</summary>
+    public string RecordHotkey { get; set; } = Hotkey.DefaultRecord;
+    /// <summary>Play a shutter sound when a still snip is taken.</summary>
+    public bool PlaySnipSound { get; set; } = true;
     /// <summary>Stay on screen with the markup bar after selecting a snip (blue toggle in the toolbar).</summary>
     public bool MarkupAfterSnip { get; set; } = true;
     public string PenColor { get; set; } = "#E81123";
@@ -33,6 +39,8 @@ public sealed class Settings
     public double ShapeSize { get; set; } = 4;
     public bool RecordCursor { get; set; } = true;
     public int RecordFps { get; set; } = 30;
+    /// <summary>Seconds of countdown after pressing Start before a recording begins; 0 = off.</summary>
+    public int RecordCountdown { get; set; } = 3;
     public bool RecordMic { get; set; } = false;
     public bool RecordSystemAudio { get; set; } = true;
     /// <summary>Editor "New" button: seconds to wait before the snip starts.</summary>
@@ -52,11 +60,25 @@ public sealed class Settings
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
+                return Fix(JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings());
         }
         catch { }
         return new Settings();
     }
+
+    /// <summary>Older files have no shortcut entries (defaults are kept); unreadable text falls back to the default.</summary>
+    static Settings Fix(Settings s)
+    {
+        s.SnipHotkey = s.SnipHotkey == null ? Hotkey.DefaultSnip
+            : s.SnipHotkey.Trim() == "" ? "" : Hotkey.TryParse(s.SnipHotkey, out var a) ? a.ToString() : Hotkey.DefaultSnip;
+        s.RecordHotkey = Hotkey.Normalize(s.RecordHotkey);
+        s.RecordCountdown = Math.Clamp(s.RecordCountdown, 0, 10);
+        return s;
+    }
+
+    /// <summary>Text for messages, e.g. "Press Ctrl+Shift+S to snip" or, with no shortcut, a hint at the tray icon.</summary>
+    public string SnipHotkeyHint(string withKey, string withoutKey) =>
+        string.IsNullOrEmpty(SnipHotkey) ? withoutKey : string.Format(withKey, SnipHotkey);
 
     public void Save()
     {
