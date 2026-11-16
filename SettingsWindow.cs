@@ -77,6 +77,8 @@ public sealed class SettingsWindow : Window
             Switch(s.MultipleWindows, v => s.MultipleWindows = v));
         Card("", "Quick markup after snipping", "Stay on screen with the markup bar after selecting a rectangle",
             Switch(s.MarkupAfterSnip, v => s.MarkupAfterSnip = v));
+        Card("\uE767", "Play a sound when taking a snip", "A short shutter click when a screenshot is taken",
+            Switch(s.PlaySnipSound, v => { s.PlaySnipSound = v; if (v) ShutterSound.Play(); }));
 
         var borderOptions = BorderOptions();
         borderOptions.Visibility = s.AddBorder ? Visibility.Visible : Visibility.Collapsed;
@@ -87,25 +89,28 @@ public sealed class SettingsWindow : Window
 
         // ---- Screen recording
         Section("Screen recording");
-        Card("", "Include microphone input by default when a screen recording starts", null,
+        Card("", "Record microphone", "Include your microphone when a screen recording starts (also on the recording bar)",
             Switch(s.RecordMic, v => s.RecordMic = v));
-        Card("", "Include system audio by default when a screen recording starts", null,
+        Card("", "Record system audio", "Include the sound playing on this PC when a screen recording starts (also on the recording bar)",
             Switch(s.RecordSystemAudio, v => s.RecordSystemAudio = v));
         Card("", "Show the mouse pointer in recordings", null,
             Switch(s.RecordCursor, v => s.RecordCursor = v));
         Card("", "Frame rate", "Higher is smoother but makes larger files",
             Choice(new[] { 15, 24, 30, 60 }, s.RecordFps, f => $"{f} fps", v => s.RecordFps = v));
+        Card("\uE916", "Countdown before recording", "Wait a moment after pressing Start so you can get ready",
+            Choice(new[] { 0, 3, 5, 10 }, s.RecordCountdown, n => n == 0 ? "Off" : $"{n} s", v => s.RecordCountdown = v));
         FolderCard("", "Screen recordings are saved to", () => s.VideoFolder, v => s.VideoFolder = v);
 
         // ---- Shortcuts
         Section("Shortcuts");
-        Card("", "Ctrl + Shift + S", "Opens screenX from anywhere", null);
+        ShortcutCard("", "New snip", "Opens screenX from anywhere", App.HotkeyAction.Snip);
+        ShortcutCard("\uE714", "Record screen", "Starts a screen recording from anywhere; press it again to stop", App.HotkeyAction.Record);
         Card("", "Use the Print Screen key to open screenX", "Turn off \"Use the Print screen key to open screen capture\" in Windows settings if the key is already taken",
             Switch(s.UsePrintScreen, v =>
             {
                 s.UsePrintScreen = v;
                 s.Save();
-                if (Application.Current is App app && !app.ApplyHotkeys() && v)
+                if (Application.Current is App app && !app.ApplyHotkeys().PrintScreen && v)
                     MessageBox.Show(this, "The Print Screen key is used by Windows or another app.\n\nOpen Windows Settings > Accessibility > Keyboard and turn off \"Use the Print screen key to open screen capture\", then switch this on again.",
                         "screenX", MessageBoxButton.OK, MessageBoxImage.Information);
             }));
@@ -204,6 +209,133 @@ public sealed class SettingsWindow : Window
             Background = CardBg, BorderBrush = CardBorder, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5),
             Padding = new Thickness(16, 14, 16, 14), Margin = new Thickness(0, 0, 0, 3), MinHeight = 66, Child = body
         });
+    }
+
+    /// <summary>
+    /// A global shortcut row. Click the field and press the new combination (Esc cancels). The snip shortcut has a
+    /// "Reset" button (back to Ctrl+Shift+S); the record shortcut has no default, so its button is "Clear".
+    /// </summary>
+    void ShortcutCard(string glyph, string title, string description, App.HotkeyAction action)
+    {
+        var s = Settings.Current;
+        bool isSnip = action == App.HotkeyAction.Snip;
+        string Current() => isSnip ? s.SnipHotkey : s.RecordHotkey;
+        string Other() => isSnip ? s.RecordHotkey : s.SnipHotkey;
+        string defaultCombo = isSnip ? Hotkey.DefaultSnip : Hotkey.DefaultRecord;
+
+        Button("", () => { }); // make sure the shared template exists
+        var field = new ToggleButton
+        {
+            Template = buttonTemplate, Foreground = Brushes.White, FontSize = 13, MinWidth = 170, Cursor = Cursors.Hand,
+            FocusVisualStyle = null, ToolTip = "Click, then press the new shortcut (Esc cancels)"
+        };
+        System.Windows.Automation.AutomationProperties.SetName(field, title + " shortcut");
+        var warning = new TextBlock
+        {
+            FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x00)), TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(40, 8, 0, 0), Visibility = Visibility.Collapsed
+        };
+        bool recording = false;
+        Button? reset = null;
+
+        void Show()
+        {
+            field.IsChecked = recording;
+            field.Content = recording ? "Press a shortcut…" : Current() == "" ? "None" : Current();
+            if (reset != null)
+            {
+                reset.IsEnabled = Current() != defaultCombo;
+                reset.Opacity = reset.IsEnabled ? 1 : 0.45;
+            }
+        }
+        void Warn(string? text)
+        {
+            warning.Text = text ?? "";
+            warning.Visibility = text == null ? Visibility.Collapsed : Visibility.Visible;
+        }
+        void Resume()
+        {
+            if (Application.Current is App app) app.ApplyHotkeys(); // listen to the global shortcuts again
+        }
+        void Cancel()
+        {
+            if (!recording) return;
+            recording = false;
+            Resume();
+            Show();
+        }
+        void Apply(string combo)
+        {
+            recording = false;
+            Warn(null);
+            if (combo != "" && string.Equals(combo, Other(), StringComparison.OrdinalIgnoreCase))
+            {
+                Warn($"{combo} is already the {(isSnip ? "Record screen" : "New snip")} shortcut.");
+                Resume();
+            }
+            else if (combo == "PrintScreen" && s.UsePrintScreen)
+            {
+                Warn("Print Screen already opens screenX (\"Use the Print Screen key\" below).");
+                Resume();
+            }
+            else if (Application.Current is App app && !app.ChangeHotkey(action, combo))
+                Warn($"{combo} is used by another app.");
+            Show();
+        }
+
+        reset = Button(isSnip ? "Reset" : "Clear", () => Apply(defaultCombo));
+        reset.ToolTip = isSnip ? $"Back to {Hotkey.DefaultSnip}" : "No shortcut";
+
+        field.Click += (_, _) =>
+        {
+            if (recording) { Cancel(); return; }
+            recording = true;
+            Warn(null);
+            // While recording, the global shortcuts must not fire, so the keys reach this field.
+            if (Application.Current is App app) app.SuspendHotkeys();
+            Show();
+            field.Focus();
+            Keyboard.Focus(field);
+        };
+        field.LostKeyboardFocus += (_, _) => Cancel();
+        Closed += (_, _) => Cancel();
+
+        void OnKey(KeyEventArgs e, bool up)
+        {
+            if (!recording) return;
+            var key = e.Key == Key.System ? e.SystemKey : e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+            bool modifier = key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin;
+            // Windows sends no key-down for Print Screen, only the key-up; other key-ups only refresh the preview.
+            if (up && key != Key.Snapshot && !modifier) return;
+            e.Handled = true;
+            var mods = Keyboard.Modifiers;
+            if (key == Key.Escape && mods == ModifierKeys.None) { Cancel(); return; }
+
+            uint m = 0;
+            var names = new List<string>();
+            if (mods.HasFlag(ModifierKeys.Control)) { m |= Native.MOD_CONTROL; names.Add("Ctrl"); }
+            if (mods.HasFlag(ModifierKeys.Alt)) { m |= Native.MOD_ALT; names.Add("Alt"); }
+            if (mods.HasFlag(ModifierKeys.Shift)) { m |= Native.MOD_SHIFT; names.Add("Shift"); }
+            if (mods.HasFlag(ModifierKeys.Windows)) { m |= Native.MOD_WIN; names.Add("Win"); }
+
+            if (modifier)
+            {
+                field.Content = names.Count > 0 ? string.Join("+", names) + "+…" : "Press a shortcut…"; // live preview
+                return;
+            }
+            var hk = new Hotkey(m, (uint)KeyInterop.VirtualKeyFromKey(key));
+            if (!Hotkey.IsSupportedKey(hk.Vk)) { Warn("That key cannot be used in a shortcut."); return; }
+            if (!hk.IsValid) { Warn("Add Ctrl, Alt, Shift or Win to the key."); return; }
+            Apply(hk.ToString());
+        }
+        field.PreviewKeyDown += (_, e) => OnKey(e, false);
+        field.PreviewKeyUp += (_, e) => OnKey(e, true);
+
+        var right = new StackPanel { Orientation = Orientation.Horizontal };
+        right.Children.Add(field);
+        right.Children.Add(reset);
+        Show();
+        Card(glyph, title, description, right, warning);
     }
 
     void FolderCard(string glyph, string title, Func<string> get, Action<string> set)

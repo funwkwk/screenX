@@ -175,7 +175,8 @@ public sealed class InstallerWindow : Window
             {
                 await Task.Run(() => Installer.Install(d, a));
                 done = true;
-                status.Text = "screenX is installed. Find it in the Start menu, or press Ctrl+Shift+S after opening it.\n" +
+                status.Text = "screenX is installed. Find it in the Start menu" +
+                              Settings.Current.SnipHotkeyHint(", or press {0} after opening it.", ".") + "\n" +
                               "Screen recording needs ffmpeg: run  winget install Gyan.FFmpeg  once if you do not have it.";
                 install.Content = "Finish";
                 install.IsEnabled = true;

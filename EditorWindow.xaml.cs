@@ -94,6 +94,7 @@ public partial class EditorWindow : Window
         bool has = image != null;
         Fit.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         EmptyHint.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
+        if (!has) EmptyHintKey.Text = Settings.Current.SnipHotkeyHint("Press New or {0} to start a snip.", "Press New to start a snip.");
         ToolsPanel.IsEnabled = has;
         foreach (var b in new UIElement[] { BtnSave, BtnCopy, BtnShare }) b.IsEnabled = has;
         UpdateHistoryButtons();

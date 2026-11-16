@@ -38,6 +38,25 @@ public static class SelfTest
                 ImageUtil.Save(textImg, Path.Combine(outDir, "ocr-input.png"));
                 L("ocr result: " + (await OcrService.RecognizeAsync(textImg)).Replace(Environment.NewLine, " | "));
 
+                // Shortcut text: parse -> format must give the canonical text back; invalid text must be rejected.
+                var hkFails = new System.Collections.Generic.List<string>();
+                foreach (var (input, expect) in new[]
+                         {
+                             ("Ctrl+Shift+S", "Ctrl+Shift+S"), ("shift+ctrl+s", "Ctrl+Shift+S"), ("Win+Alt+F12", "Alt+Win+F12"),
+                             ("PrintScreen", "PrintScreen"), ("Shift+PrtSc", "Shift+PrintScreen"), ("Ctrl+Alt+7", "Ctrl+Alt+7"),
+                             ("Ctrl+Num+", "Ctrl+Num+"), ("Ctrl+Shift+-", "Ctrl+Shift+-"), ("Control+Super+F24", "Ctrl+Win+F24"),
+                             ("S", ""), ("Ctrl+Shift", ""), ("Ctrl+Foo", ""), ("", ""), ("F5", ""),
+                         })
+                {
+                    string got = Hotkey.Normalize(input);
+                    if (got != expect) hkFails.Add($"'{input}' -> '{got}' (want '{expect}')");
+                    if (got != "" && Hotkey.Normalize(got) != got) hkFails.Add($"'{got}' does not round-trip");
+                }
+                L(hkFails.Count == 0 ? "shortcuts parse/format: OK" : "shortcuts parse/format: FAIL " + string.Join("; ", hkFails));
+                L($"shutter sound resource: {(ShutterSound.ResourcePresent ? "OK" : "MISSING")}");
+                int cdMissing = System.Text.Json.JsonSerializer.Deserialize<Settings>("{\"RecordFps\": 30}")!.RecordCountdown;
+                L($"record countdown when missing: {cdMissing} {(cdMissing == 3 ? "OK" : "FAIL")}");
+
                 var c = Color.FromRgb(0x33, 0x99, 0xFF);
                 L($"color: {ColorUtil.Hex(c)} {ColorUtil.Rgb(c)} {ColorUtil.Hsl(c)}");
 
@@ -124,7 +143,9 @@ public static class SelfTest
                 if (ffm != null)
                 {
                     bool micBefore = Settings.Current.RecordMic, sysBefore = Settings.Current.RecordSystemAudio;
+                    int countdownBefore = Settings.Current.RecordCountdown;
                     Settings.Current.RecordMic = true; Settings.Current.RecordSystemAudio = true; // not saved
+                    Settings.Current.RecordCountdown = 3;
                     var rc = new RecordingController(new Int32Rect(vs.X + 200, vs.Y + 160, 800, 450));
                     var layer = (Window)Field(rc, "layer");
                     var bar = (Window)Field(rc, "bar");
@@ -132,12 +153,17 @@ public static class SelfTest
                     await Task.Delay(800);
                     SaveScreen((FrameworkElement)layer.Content, Path.Combine(outDir, "record-setup.png"), shot);                    SaveVisual((FrameworkElement)bar.Content, Path.Combine(outDir, "record-bar-idle.png"));
                     _ = (Task)Call(rc, "StartAsync")!;
-                    await Task.Delay(5500);
+                    await Task.Delay(450); // "3" has finished animating in
+                    SaveScreen((FrameworkElement)layer.Content, Path.Combine(outDir, "countdown.png"), shot);
+                    SaveVisual((FrameworkElement)bar.Content, Path.Combine(outDir, "record-bar-countdown.png"));
+                    L("countdown render: OK");
+                    await Task.Delay(5050);
                     SaveScreen((FrameworkElement)layer.Content, Path.Combine(outDir, "record-recording.png"), shot);
                     SaveVisual((FrameworkElement)bar.Content, Path.Combine(outDir, "record-bar-recording.png"));
                     string final = (string)Field(rc, "finalPath");
                     await (Task)Call(rc, "StopAsync", true)!;
                     Settings.Current.RecordMic = micBefore; Settings.Current.RecordSystemAudio = sysBefore;
+                    Settings.Current.RecordCountdown = countdownBefore;
                     var probe = new System.Diagnostics.ProcessStartInfo(ffm) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
                     foreach (var a in new[] { "-hide_banner", "-i", final }) probe.ArgumentList.Add(a);
                     using (var p = System.Diagnostics.Process.Start(probe)!)

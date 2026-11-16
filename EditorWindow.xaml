@@ -340,7 +340,7 @@
         <Grid x:Name="Stage" Background="#202020" ClipToBounds="True">
             <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                        Foreground="#B8B8B8" FontSize="15" LineHeight="24">
-                <Run Text="Press New or Ctrl+Shift+S to start a snip."/>
+                <Run x:Name="EmptyHintKey" Text="Press New or Ctrl+Shift+S to start a snip."/>
                 <LineBreak/>
                 <Run Text="Snips and recordings are saved automatically." Foreground="#8A8A8A" FontSize="13"/>
             </TextBlock>
