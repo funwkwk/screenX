@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -117,6 +118,8 @@ public sealed class SettingsWindow : Window
         Card("", "Start screenX when Windows starts", "Runs quietly in the notification area",
             Switch(Tray.IsAutoStart(), Tray.SetAutoStart));
 
+        LicenceSection();
+
         // ---- About
         Section("About this app");
         var v = Assembly.GetExecutingAssembly().GetName().Version;
@@ -172,6 +175,112 @@ public sealed class SettingsWindow : Window
           </Setter>
         </Style>
         """);
+
+
+    // =================================================================== licence and updates
+
+    void LicenceSection()
+    {
+        Section("Licence and updates");
+        var status = new TextBlock { FontSize = 12, Foreground = Sub, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(40, 8, 0, 0) };
+        var devicesPanel = new StackPanel { Margin = new Thickness(40, 8, 0, 0), Visibility = Visibility.Collapsed };
+        var box = new TextBox
+        {
+            Width = 260, FontSize = 13, Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x1D, 0x1D)),
+            Foreground = Brushes.White, CaretBrush = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)),
+            ToolTip = "Paste the licence from your purchase email or thanks page",
+        };
+        System.Windows.Automation.AutomationProperties.SetName(box, "Licence");
+        var right = new StackPanel { Orientation = Orientation.Horizontal };
+        Button? act = null, signOut = null;
+
+        void Refresh()
+        {
+            bool has = Licence.Key != null;
+            status.Text = Licence.StatusText + (has ? "" : ". Paste the licence you received after buying.");
+            status.Foreground = Licence.State is LicenceState.Revoked or LicenceState.Invalid ? new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x00)) : Sub;
+            box.Visibility = Licence.IsPro ? Visibility.Collapsed : Visibility.Visible;
+            if (act != null) act.Visibility = Licence.IsPro ? Visibility.Collapsed : Visibility.Visible;
+            if (signOut != null) signOut.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        async Task Activate(string licence)
+        {
+            status.Text = "Activating…";
+            devicesPanel.Visibility = Visibility.Collapsed;
+            var r = await Licence.ActivateAsync(licence);
+            if (r.Ok) { box.Text = ""; Refresh(); _ = Updater.CheckAsync(); return; }
+            if (r.Status == 409 && r.Code == "device_limit")
+            {
+                ShowDevices(devicesPanel, licence, r.Devices(), Activate);
+                status.Text = "This licence is already on 3 devices. Remove one to use it here:";
+                return;
+            }
+            Refresh();
+            status.Text = r.Error ?? "Activation failed.";
+        }
+
+        act = Button("Activate", () => _ = Activate(box.Text));
+        signOut = Button("Sign out this PC", async () =>
+        {
+            if (MessageBox.Show(this, "Free this PC's slot and remove the licence from screenX?\n\nPro features and updates stop until you activate again.", "screenX",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            status.Text = "Signing out…";
+            await Licence.SignOutAsync();
+            devicesPanel.Visibility = Visibility.Collapsed;
+            Refresh();
+        });
+        right.Children.Add(box);
+        right.Children.Add(act);
+        right.Children.Add(signOut);
+        var below = new StackPanel();
+        below.Children.Add(status);
+        below.Children.Add(devicesPanel);
+        Card("", "screenX Pro licence", "Unlocks Pro features and updates. One licence works on up to 3 devices.", right, below);
+        Refresh();
+
+        var upStatus = new TextBlock { FontSize = 12, Foreground = Sub, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(40, 8, 0, 0), Visibility = Visibility.Collapsed };
+        var check = Button("Check now", () => { });
+        check.Click += async (_, _) =>
+        {
+            check.IsEnabled = false;
+            upStatus.Visibility = Visibility.Visible;
+            upStatus.Text = "Checking…";
+            try
+            {
+                var o = await Updater.CheckAsync();
+                upStatus.Text = o.Message;
+                if (o.UpdateAvailable) Updater.ShowPrompt(o);
+                Refresh();
+            }
+            finally { check.IsEnabled = true; }
+        };
+        Card("", $"Updates (installed: {Installer.Version})", "screenX checks for updates when it starts and every 6 hours while you have an active licence",
+            check, upStatus);
+    }
+
+    void ShowDevices(StackPanel panel, string licence, List<DeviceInfo> devices, Func<string, Task> retry)
+    {
+        panel.Children.Clear();
+        panel.Visibility = Visibility.Visible;
+        foreach (var d in devices)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+            var remove = Button("Deactivate", () => { });
+            remove.Click += async (_, _) =>
+            {
+                remove.IsEnabled = false;
+                var r = await Licence.DeactivateAsync(licence, d.Id);
+                if (r.Ok) await retry(licence);
+                else { remove.IsEnabled = true; MessageBox.Show(this, r.Error ?? "Could not deactivate that device.", "screenX"); }
+            };
+            DockPanel.SetDock(remove, Dock.Right);
+            row.Children.Add(remove);
+            string seen = DateTime.TryParse(d.LastSeen, out var t) ? "last seen " + t.ToLocalTime().ToString("d MMM yyyy") : "";
+            row.Children.Add(new TextBlock { Text = $"{d.Name}  ({d.Os}{(seen == "" ? "" : ", " + seen)})", FontSize = 13, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            panel.Children.Add(row);
+        }
+    }
 
     // =================================================================== building blocks
 

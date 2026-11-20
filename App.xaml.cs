@@ -52,6 +52,13 @@ public partial class App : Application
             return;
         }
 
+        if (args.Length >= 1 && args[0] == "--selftest-licence")
+        {
+            // Needs SCREENX_API_URL (a mock or `vercel dev` server) and SCREENX_DATA_DIR; see LicenceSelfTest.
+            _ = LicenceSelfTest.RunAsync(e.Args.Length > 1 ? e.Args[1] : "").ContinueWith(t => Dispatcher.Invoke(() => Shutdown(t.Result)));
+            return;
+        }
+
         if (args.Length >= 2 && args[0] == "--lens-file")
         {
             // Test hook: run the Google Lens flow on an image file instead of a snip.
@@ -110,6 +117,7 @@ public partial class App : Application
 
         tray = new Tray(this);
         ShutterSound.Preload();
+        Updater.Start();
         var hk = ApplyHotkeys();
         ListenForOtherInstances();
 
