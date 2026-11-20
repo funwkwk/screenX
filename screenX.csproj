@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\screenX.ico" LogicalName="screenX.ico" />
+    <EmbeddedResource Include="Assets\screenX-tray.ico" LogicalName="screenX-tray.ico" />
     <EmbeddedResource Include="Assets\shutter.wav" LogicalName="shutter.wav" />
   </ItemGroup>
 

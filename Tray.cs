@@ -37,9 +37,11 @@ public sealed class Tray : IDisposable
         if (recordItem != null) recordItem.ShortcutKeyDisplayString = s.RecordHotkey;
     }
 
+    /// <summary>The tray icon: the minimal frame + X logo (screenX-tray.ico), falling back to the app icon.</summary>
     public static Icon LoadIcon(Size size)
     {
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("screenX.ico");
+        var asm = Assembly.GetExecutingAssembly();
+        using var s = asm.GetManifestResourceStream("screenX-tray.ico") ?? asm.GetManifestResourceStream("screenX.ico");
         return s != null ? new Icon(s, size) : SystemIcons.Application;
     }
 
