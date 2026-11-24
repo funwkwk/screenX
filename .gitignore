@@ -1,2 +1,17 @@
 dist/
 installers/
+
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+*.log
+
+# Local Claude Code settings
+.claude/settings.local.json

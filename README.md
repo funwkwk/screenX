@@ -112,12 +112,13 @@ See [linux/README.md](linux/README.md) for the packages it uses, the Wayland not
 
 ## Notes
 
-- Recordings have no audio yet (microphone or system sound).
+- On Windows, recordings can include the microphone and/or system audio (toggle them on the recording bar).
 - Settings are stored in `%AppData%\screenX\settings.json`; Google Lens attempts are logged to `%AppData%\screenX\lens.log` (window titles only).
 
 ## Third-party software
 
 - [Vortice.Direct2D1](https://github.com/amerkoleci/Vortice.Windows) (MIT License) renders colour emoji with Direct2D.
+- [NAudio](https://github.com/naudio/NAudio) (MIT License) records the microphone and system audio on Windows.
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) (GPL v3) and [Qt](https://www.qt.io/) (LGPL v3) are the
   toolkit of the Linux version. They are **not** included in this repository; screenX uses the copy installed on the PC.
 - [Tesseract](https://github.com/tesseract-ocr/tesseract) (Apache License 2.0) reads the text for the Linux text
