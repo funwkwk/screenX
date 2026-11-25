@@ -5,9 +5,7 @@ by [funwkwk](https://funwkwk.my.id)
 screenX is an open-source screen capture tool. It works like the Windows Snipping Tool and adds screen recording,
 a colour picker, a text extractor (OCR), in-place markup and Google Lens image search.
 
-- **Windows 10 / 11**: available now (this repository)
-- **macOS**: planned
-- **Linux** (X11 and Wayland): in [`linux/`](linux/README.md)
+screenX runs on **Windows 10 / 11**.
 
 The source code is free software under the [GNU General Public License v3.0](LICENSE). Ready-to-install
 builds of screenX are offered as a paid download. Buying the installer supports development; you can
@@ -96,33 +94,15 @@ The text extractor uses the Windows OCR languages installed on the PC (your prof
 Self-test (capture, OCR, colours, UI renders and a 2-second recording; writes images and a log to the folder):
 `screenX.exe --selftest <output-folder>`
 
-## Linux
-
-The Linux version is a Python + PyQt6 app in [`linux/`](linux/README.md):
-
-```bash
-bash linux/install.sh
-```
-
-```bash
-screenx
-```
-
-See [linux/README.md](linux/README.md) for the packages it uses, the Wayland notes and the keyboard shortcut.
-
 ## Notes
 
-- On Windows, recordings can include the microphone and/or system audio (toggle them on the recording bar).
+- Recordings can include the microphone and/or system audio (toggle them on the recording bar).
 - Settings are stored in `%AppData%\screenX\settings.json`; Google Lens attempts are logged to `%AppData%\screenX\lens.log` (window titles only).
 
 ## Third-party software
 
 - [Vortice.Direct2D1](https://github.com/amerkoleci/Vortice.Windows) (MIT License) renders colour emoji with Direct2D.
 - [NAudio](https://github.com/naudio/NAudio) (MIT License) records the microphone and system audio on Windows.
-- [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) (GPL v3) and [Qt](https://www.qt.io/) (LGPL v3) are the
-  toolkit of the Linux version. They are **not** included in this repository; screenX uses the copy installed on the PC.
-- [Tesseract](https://github.com/tesseract-ocr/tesseract) (Apache License 2.0) reads the text for the Linux text
-  extractor. It is not included either.
 - [FFmpeg](https://ffmpeg.org/) is used for screen recording. It is **not** included in this repository; screenX runs
   the copy installed on the PC. FFmpeg is licensed under the LGPL or GPL depending on the build, so any installer
   that bundles `ffmpeg.exe` must follow the terms of that build's licence.
