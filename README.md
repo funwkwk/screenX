@@ -6,10 +6,21 @@
 
 **Snip, mark up, record, pick colours and extract text on Windows, all from one shortcut.**
 
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
-[![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![UI](https://img.shields.io/badge/UI-WPF-5C2D91)](https://learn.microsoft.com/dotnet/desktop/wpf/)
-[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6bTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6bTEyLjYgMEgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D)](#-supported-systems)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![C# WPF](https://img.shields.io/badge/C%23-WPF-239120?style=for-the-badge)](#-tech-stack)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-H.264-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
+[![Version](https://img.shields.io/badge/version-1.1.0-2EA043?style=for-the-badge)](https://funwkwk.my.id)
+[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue?style=for-the-badge&logo=gnu&logoColor=white)](LICENSE)
+
+<p>
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Windows" width="40" height="40">&nbsp;&nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/dotnetcore/dotnetcore-original.svg" alt=".NET" width="40" height="40">&nbsp;&nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/csharp/csharp-original.svg" alt="C#" width="40" height="40">&nbsp;&nbsp;
+  <img src="https://cdn.simpleicons.org/ffmpeg" alt="FFmpeg" width="40" height="40">&nbsp;&nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/powershell/powershell-original.svg" alt="PowerShell" width="40" height="40">&nbsp;&nbsp;
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/visualstudio/visualstudio-original.svg" alt="Visual Studio" width="40" height="40">
+</p>
 
 by [funwkwk](https://funwkwk.my.id)
 
@@ -23,56 +34,66 @@ The source code is free software under the [GNU General Public License v3.0](LIC
 builds are offered as a paid download on [funwkwk.my.id](https://funwkwk.my.id); buying one supports
 development. You can always build screenX yourself from this source.
 
-## Contents
+## 📑 Contents
 
-- [Features](#features)
-- [Usage](#usage)
-- [Tech stack](#tech-stack)
-- [Architecture](#architecture)
-- [Project layout](#project-layout)
-- [Build from source](#build-from-source)
-- [Data and privacy](#data-and-privacy)
-- [Third-party software](#third-party-software)
-- [License](#license)
+- [💻 Supported systems](#-supported-systems)
+- [✨ Features](#-features)
+- [🖱️ Usage](#️-usage)
+- [🧰 Tech stack](#-tech-stack)
+- [🏗️ Architecture](#️-architecture)
+- [📁 Project layout](#-project-layout)
+- [🛠️ Build from source](#️-build-from-source)
+- [🔒 Data and privacy](#-data-and-privacy)
+- [📦 Third-party software](#-third-party-software)
+- [📜 License](#-license)
 
-## Features
+## 💻 Supported systems
 
-| | |
-|---|---|
-| **Snips** | Rectangle, window, full screen (all monitors) and freeform (transparent outside the shape) |
-| **In-place markup** | Pen, highlighter, eraser, rectangle, ellipse, line, arrow, fill and outline, colour emoji you can move, resize and rotate, undo / redo |
-| **Resizable selection** | Corner and edge handles stay active after the snip; mark-ups keep their place |
-| **Editor** | Snipping Tool style window: crop, markup, save as PNG / JPG / BMP, copy, share, extract text, Edit in Paint |
-| **Screen recording** | Any region to MP4 (H.264), optional microphone and system audio, 3-2-1 countdown, pause |
-| **Colour picker** | Magnifier with pixel-exact arrow keys; HEX, RGB and HSL |
-| **Text extractor** | Built-in Windows OCR in your profile languages |
-| **Google Lens** | Opens Lens in your browser and pastes the snip for you |
-| **Share** | The Windows share sheet |
-| **Shortcuts** | Your own global shortcuts for snip and record, optional Print Screen key |
-| **Installer** | The exe installs itself per user, no administrator rights needed |
+| | System | Status |
+|:---:|---|---|
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Windows 11" width="28" height="28"> | **Windows 11** (x64) | ✅ Supported |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Windows 10" width="28" height="28"> | **Windows 10** version 2004 (build 19041) or later (x64) | ✅ Supported |
+
+The installer is one self-contained exe: no .NET runtime, no administrator rights.
+
+## ✨ Features
+
+| | Feature | What it does |
+|:---:|---|---|
+| ✂️ | **Snips** | Rectangle, window, full screen (all monitors) and freeform (transparent outside the shape) |
+| 🖍️ | **In-place markup** | Pen, highlighter, eraser, rectangle, ellipse, line, arrow, fill and outline, colour emoji you can move, resize and rotate, undo / redo |
+| 📐 | **Resizable selection** | Corner and edge handles stay active after the snip; mark-ups keep their place |
+| 🖼️ | **Editor** | Snipping Tool style window: crop, markup, save as PNG / JPG / BMP, copy, share, extract text, Edit in Paint |
+| 🎥 | **Screen recording** | Any region to MP4 (H.264), optional microphone and system audio, 3-2-1 countdown, pause |
+| 🎨 | **Colour picker** | Magnifier with pixel-exact arrow keys; HEX, RGB and HSL |
+| 🔤 | **Text extractor** | Built-in Windows OCR in your profile languages |
+| <img src="https://cdn.simpleicons.org/googlelens" alt="Google Lens" width="20" height="20"> | **Google Lens** | Opens Lens in your browser and pastes the snip for you |
+| 📤 | **Share** | The Windows share sheet |
+| ⌨️ | **Shortcuts** | Your own global shortcuts for snip and record, optional Print Screen key |
+| 📦 | **Installer** | The exe installs itself per user, no administrator rights needed |
 
 Snips are copied to the clipboard and saved to `Pictures\screenX`; recordings go to `Videos\screenX`.
 
-## Usage
+## 🖱️ Usage
 
 Open screenX with **Ctrl + Shift + S** (change it in Settings). Windows keeps its own **Win + Shift + S**, so
 both work side by side.
 
-### Top toolbar
+### 🧭 Top toolbar
 
 `[ snip | record ]  [ snip mode ▾ ]  [ quick markup ]  |  [ colour picker ]  [ text extractor ]  |  [ × ]`
 
 | Mode | How | Result |
 |---|---|---|
-| Rectangle | Drag an area | Markup bar (when quick markup is on), otherwise copied and saved |
-| Window | Hover a window and click | The whole window |
-| Full screen | Pick it from the snip mode menu | All monitors |
-| Freeform | Draw any shape | PNG, transparent outside the shape |
-| Record | Drag an area, press **Start**, wait for the countdown | MP4 in `Videos\screenX`, file copied to the clipboard |
-| Colour picker | Click a pixel (arrows = 1 px, Shift + arrows = 10 px, Enter = pick) | HEX copied; HEX, RGB and HSL from the notification |
-| Text extractor | Drag over text | Text copied to the clipboard |
+| ⬜ Rectangle | Drag an area | Markup bar (when quick markup is on), otherwise copied and saved |
+| 🪟 Window | Hover a window and click | The whole window |
+| 🖥️ Full screen | Pick it from the snip mode menu | All monitors |
+| ✏️ Freeform | Draw any shape | PNG, transparent outside the shape |
+| 🎥 Record | Drag an area, press **Start**, wait for the countdown | MP4 in `Videos\screenX`, file copied to the clipboard |
+| 🎨 Colour picker | Click a pixel (arrows = 1 px, Shift + arrows = 10 px, Enter = pick) | HEX copied; HEX, RGB and HSL from the notification |
+| 🔤 Text extractor | Drag over text | Text copied to the clipboard |
 
-### Markup bar
+### 🖍️ Markup bar
 
 `[ Capture ▾ ]  [ Share ]  [ Google Lens ]  |  [ Pen ] [ Highlighter ] [ Eraser ] [ Shapes ]  |  [ Undo ] [ Redo ]  |  [ Discard ]`
 
@@ -84,7 +105,7 @@ both work side by side.
 
 Clicking the "Snip copied" notification opens the **editor**.
 
-### Tray icon and command line
+### 🔔 Tray icon and command line
 
 Left click the tray icon for a new snip; right click for full screen snip, screen record, colour picker, text
 extractor, the screenshot and recording folders, **Settings** and Exit.
@@ -95,24 +116,25 @@ screenX.exe --snip | --fullscreen | --record | --color | --text | --background
 
 These also work while screenX is already running: the running copy picks up the command.
 
-## Tech stack
+## 🧰 Tech stack
 
-| Layer | Technology |
-|---|---|
-| Language | C# with nullable reference types |
-| Runtime | .NET 10 (`net10.0-windows10.0.19041.0`), published as one self-contained single-file exe |
-| UI | WPF (XAML windows plus code-built windows), Windows Forms only for the tray icon |
-| Screen capture | Win32 GDI `BitBlt` into a reusable top-down 32 bpp DIB, Per-Monitor-V2 DPI aware |
-| Recording | GDI frames piped as raw BGRA into **FFmpeg** (`libx264`, CRF 20, `yuv420p`), then muxed with AAC audio |
-| Audio | **NAudio** WASAPI: microphone capture and system loopback, mixed with FFmpeg `amix` |
-| OCR | `Windows.Media.Ocr` (WinRT), the engine Snipping Tool and PowerToys use |
-| Colour emoji | **Vortice.Direct2D1** (Direct2D + DirectWrite) for Segoe UI Emoji in colour |
-| Share | WinRT `DataTransferManager` through `IDataTransferManagerInterop` |
-| Hotkeys | `RegisterHotKey` on a message-only window |
-| Storage | JSON settings in `%AppData%\screenX`; licence encrypted with DPAPI |
-| Updates / licence | HTTPS JSON API, installer verified by SHA-256 before it runs |
+| | Layer | Technology |
+|:---:|---|---|
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/csharp/csharp-original.svg" alt="C#" width="20" height="20"> | Language | C# with nullable reference types |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/dotnetcore/dotnetcore-original.svg" alt=".NET" width="20" height="20"> | Runtime | .NET 10 (`net10.0-windows10.0.19041.0`), published as one self-contained single-file exe |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/visualstudio/visualstudio-original.svg" alt="WPF" width="20" height="20"> | UI | WPF (XAML windows plus code-built windows), Windows Forms only for the tray icon |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Win32" width="20" height="20"> | Screen capture | Win32 GDI `BitBlt` into a reusable top-down 32 bpp DIB, Per-Monitor-V2 DPI aware |
+| <img src="https://cdn.simpleicons.org/ffmpeg" alt="FFmpeg" width="20" height="20"> | Recording | GDI frames piped as raw BGRA into **FFmpeg** (`libx264`, CRF 20, `yuv420p`), then muxed with AAC audio |
+| 🔊 | Audio | **NAudio** WASAPI: microphone capture and system loopback, mixed with FFmpeg `amix` |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Windows OCR" width="20" height="20"> | OCR | `Windows.Media.Ocr` (WinRT), the engine Snipping Tool and PowerToys use |
+| 😀 | Colour emoji | **Vortice.Direct2D1** (Direct2D + DirectWrite) for Segoe UI Emoji in colour |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="WinRT" width="20" height="20"> | Share | WinRT `DataTransferManager` through `IDataTransferManagerInterop` |
+| ⌨️ | Hotkeys | `RegisterHotKey` on a message-only window |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/json/json-original.svg" alt="JSON" width="20" height="20"> | Storage | JSON settings in `%AppData%\screenX`; licence encrypted with DPAPI |
+| 🔐 | Updates / licence | HTTPS JSON API, installer verified by SHA-256 before it runs |
+| <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/powershell/powershell-original.svg" alt="PowerShell" width="20" height="20"> | Build | `dotnet publish` single-file, packaged by `build-installer.ps1`; dependencies from <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/nuget/nuget-original.svg" alt="NuGet" width="16" height="16"> NuGet |
 
-## Architecture
+## 🏗️ Architecture
 
 screenX is a single-process tray app. One instance stays resident; each capture opens a full-screen overlay on
 top of a frozen screenshot, and the result goes to the clipboard, disk, the editor or a toast.
@@ -162,7 +184,7 @@ flowchart LR
     TO --> ED
 ```
 
-### Startup and single instance
+### 🚀 Startup and single instance
 
 `App.xaml.cs` handles the special runs first (`--install`, `--uninstall`, `--selftest`, `--open <file>`), then
 takes the named mutex `Local\screenX.SingleInstance`. A second copy does not start a UI: it signals a named
@@ -170,7 +192,7 @@ takes the named mutex `Local\screenX.SingleInstance`. A second copy does not sta
 creates the tray icon, preloads the shutter sound, starts the update checks and registers the global hotkeys.
 When a shortcut is taken by another app, a tray balloon says so instead of failing silently.
 
-### Snip flow
+### ✂️ Snip flow
 
 1. `ScreenCapture` grabs the whole virtual screen in physical pixels.
 2. `OverlayWindow` shows that frozen image across every monitor with the top toolbar. All selection maths is
@@ -183,7 +205,7 @@ When a shortcut is taken by another app, a tray balloon says so instead of faili
 
 screenX's own windows are excluded from captures with `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`.
 
-### Recording pipeline
+### 🎥 Recording pipeline
 
 ```mermaid
 flowchart LR
@@ -204,14 +226,14 @@ flowchart LR
   builds older than 4.4).
 - FFmpeg is looked up on `PATH` or next to `screenX.exe`.
 
-### Google Lens
+### 🔎 Google Lens
 
 `GoogleLens` copies the snip, opens Google's "Search any image with Google Lens" page in the default browser
 and waits until that tab is in front. It then pastes the image into the page, so the upload happens inside the
 browser's own session and the results page shows the image. If the browser tab is not in front, a toast tells
 you to paste or drag the image yourself. Only window titles are logged, never image data.
 
-### Installer, updates and licence
+### 📦 Installer, updates and licence
 
 - **Installer**: the published single-file exe is its own setup. Named `screenX-Setup*.exe` (or run with
   `--install`) it copies itself to `%LocalAppData%\Programs\screenX`, creates shortcuts and registers in
@@ -222,13 +244,13 @@ you to paste or drag the image yourself. Only window titles are logged, never im
   device id is a SHA-256 of the machine GUID; the raw GUID never leaves the PC. Nothing secret is compiled into
   the app.
 
-### Self-test
+### 🧪 Self-test
 
 `screenX.exe --selftest <folder>` runs capture, OCR, colour maths, renders every window to PNG and makes a
 2-second test recording, then writes `selftest.log`. `--selftest-licence` tests the licence storage against a
 throw-away data folder.
 
-## Project layout
+## 📁 Project layout
 
 | File | Responsibility |
 |---|---|
@@ -251,16 +273,16 @@ throw-away data folder.
 | `build-installer.ps1` | Builds `dist\screenX-Setup-<version>.exe` |
 | `tools/make_tray_icons.py` | Regenerates the tray icon sizes |
 
-## Build from source
+## 🛠️ Build from source
 
-### Requirements
+### ✅ Requirements
 
-- Windows 10 version 2004 (build 19041) or later, or Windows 11
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [FFmpeg](https://ffmpeg.org/) for screen recording only: `winget install Gyan.FFmpeg`, or put `ffmpeg.exe`
+- <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/windows11/windows11-original.svg" alt="Windows" width="16" height="16"> Windows 10 version 2004 (build 19041) or later, or Windows 11
+- <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@v2.16.0/icons/dotnetcore/dotnetcore-original.svg" alt=".NET" width="16" height="16"> [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- <img src="https://cdn.simpleicons.org/ffmpeg" alt="FFmpeg" width="16" height="16"> [FFmpeg](https://ffmpeg.org/) for screen recording only: `winget install Gyan.FFmpeg`, or put `ffmpeg.exe`
   next to `screenX.exe`
 
-### Build and run
+### ▶️ Build and run
 
 ```powershell
 dotnet build -c Release
@@ -270,7 +292,7 @@ dotnet build -c Release
 .\bin\Release\net10.0-windows10.0.19041.0\screenX.exe
 ```
 
-### Installer
+### 📦 Installer
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build-installer.ps1
@@ -278,19 +300,19 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 This produces `dist\screenX-Setup-<version>.exe`: one self-contained file that needs no .NET on the target PC.
 
-## Data and privacy
+## 🔒 Data and privacy
 
 | What | Where |
 |---|---|
-| Settings | `%AppData%\screenX\settings.json` |
-| Licence (DPAPI encrypted) | `%AppData%\screenX\licence.json` |
-| Google Lens log (window titles only) | `%AppData%\screenX\lens.log` |
-| Snips | `Pictures\screenX` |
-| Recordings | `Videos\screenX` |
+| ⚙️ Settings | `%AppData%\screenX\settings.json` |
+| 🔐 Licence (DPAPI encrypted) | `%AppData%\screenX\licence.json` |
+| 🔎 Google Lens log (window titles only) | `%AppData%\screenX\lens.log` |
+| 🖼️ Snips | `Pictures\screenX` |
+| 🎥 Recordings | `Videos\screenX` |
 
 OCR runs on your PC. Images leave the PC only when you choose Google Lens or Share.
 
-## Third-party software
+## 📦 Third-party software
 
 - [Vortice.Direct2D1](https://github.com/amerkoleci/Vortice.Windows) (MIT License) renders colour emoji with Direct2D.
 - [NAudio](https://github.com/naudio/NAudio) (MIT License) records the microphone and system audio.
@@ -298,7 +320,7 @@ OCR runs on your PC. Images leave the PC only when you choose Google Lens or Sha
   runs the copy installed on the PC. FFmpeg is licensed under the LGPL or GPL depending on the build, so any
   installer that bundles `ffmpeg.exe` must follow the terms of that build's licence.
 
-## License
+## 📜 License
 
 Copyright (c) 2026 [funwkwk](https://funwkwk.my.id).
 
